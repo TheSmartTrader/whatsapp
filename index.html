@@ -621,7 +621,11 @@
   <div class="join-card">
     <div class="eyebrow-mark"></div>
     <h1>WhatsApp New</h1>
-    <p class="sub">Enter the same room code as your family or friends to land in the same chat. Anyone with the code and the link can join.</p>
+    <p class="sub">Enter your mobile number once — next time, this device will skip straight to your chat. Room code is what links you to your family/friends.</p>
+    <div class="field">
+      <label for="phone-input">Mobile number</label>
+      <input id="phone-input" type="tel" placeholder="e.g. 9876543210" autocomplete="off" />
+    </div>
     <div class="field">
       <label for="room-input">Room code</label>
       <input id="room-input" type="text" placeholder="e.g. sharma-family" autocomplete="off" />
@@ -648,7 +652,7 @@
     </div>
     <p class="section-label">Members</p>
     <div id="member-list"></div>
-    <div class="me-tag">You're in as <b id="me-name-el">—</b></div>
+    <div class="me-tag">You're in as <b id="me-name-el">—</b><br><a href="#" id="switch-account-link" style="color:var(--text-dim); font-size:0.72rem;">Not you? Switch account</a></div>
   </aside>
   <main>
     <div id="mobile-header">
@@ -801,8 +805,15 @@ function playNotifySound(){
 // -------------------------------------------------------------------------
 // Auth: anonymous sign-in, then wait for join form
 // -------------------------------------------------------------------------
+let autoJoinAttempted = false;
 onAuthStateChanged(auth, (user) => {
-  if (user) uid = user.uid;
+  if (user){
+    uid = user.uid;
+    if (!autoJoinAttempted){
+      autoJoinAttempted = true;
+      attemptAutoJoin();
+    }
+  }
 });
 signInAnonymously(auth).catch((e) => {
   showJoinError("Couldn't connect (" + e.code + "). Check your Firebase config at the top of this file.");
@@ -812,18 +823,67 @@ function showJoinError(msg){
   document.getElementById("join-error").textContent = msg;
 }
 
+// Normalizes a mobile number to just its digits (and a leading +), so the
+// same number typed with spaces/dashes still matches the same profile.
+function normalizePhone(raw){
+  return (raw || "").trim().replace(/[^\d+]/g, "");
+}
+
+// -------------------------------------------------------------------------
+// Remember-me: if this device already joined before, skip the form entirely.
+// -------------------------------------------------------------------------
+async function attemptAutoJoin(){
+  const phone = localStorage.getItem("wn-phone");
+  const name = localStorage.getItem("wn-name");
+  const room = localStorage.getItem("wn-room");
+  if (!phone || !name || !room) return;
+  document.getElementById("phone-input").value = phone;
+  document.getElementById("name-input").value = name;
+  document.getElementById("room-input").value = room;
+  showJoinError("Welcome back — joining…");
+  await joinRoom();
+}
+
+// If someone recognizes their number on a new/cleared device, pull their
+// saved name + room code so they don't have to retype them.
+document.getElementById("phone-input").addEventListener("blur", async () => {
+  const phone = normalizePhone(document.getElementById("phone-input").value);
+  if (!phone) return;
+  if (document.getElementById("name-input").value.trim() && document.getElementById("room-input").value.trim()) return;
+  try {
+    const snap = await getDoc(doc(db, "profiles", phone));
+    if (snap.exists()){
+      const data = snap.data();
+      document.getElementById("name-input").value = data.name || "";
+      document.getElementById("room-input").value = data.roomCode || "";
+      showJoinError("Welcome back, " + (data.name || "") + " — tap Join room to continue.");
+    }
+  } catch (e) { /* profile lookup is best-effort only */ }
+});
+
 // -------------------------------------------------------------------------
 // Join flow
 // -------------------------------------------------------------------------
 document.getElementById("join-btn").addEventListener("click", joinRoom);
 document.getElementById("name-input").addEventListener("keydown", (e) => { if (e.key === "Enter") joinRoom(); });
 document.getElementById("room-input").addEventListener("keydown", (e) => { if (e.key === "Enter") joinRoom(); });
+document.getElementById("phone-input").addEventListener("keydown", (e) => { if (e.key === "Enter") joinRoom(); });
+
+document.getElementById("switch-account-link").addEventListener("click", (e) => {
+  e.preventDefault();
+  if (!window.confirm("Switch to a different number/name on this device?")) return;
+  localStorage.removeItem("wn-phone");
+  localStorage.removeItem("wn-name");
+  localStorage.removeItem("wn-room");
+  location.reload();
+});
 
 async function joinRoom(){
   const room = document.getElementById("room-input").value.trim().toLowerCase().replace(/\s+/g, "-");
   const name = document.getElementById("name-input").value.trim();
-  if (!room || !name){
-    showJoinError("Please enter both a room code and your name.");
+  const phone = normalizePhone(document.getElementById("phone-input").value);
+  if (!room || !name || !phone){
+    showJoinError("Please enter your mobile number, room code and name.");
     return;
   }
   if (!uid){
@@ -853,6 +913,13 @@ async function joinRoom(){
   window.addEventListener("beforeunload", () => {
     deleteDoc(doc(db, "rooms", roomCode, "members", uid)).catch(()=>{});
   });
+
+  // Remember this phone → name/room, so this device (and any device where
+  // the same number is entered) can skip the form next time.
+  setDoc(doc(db, "profiles", phone), { name: myName, roomCode, updatedAt: serverTimestamp() }).catch(() => {});
+  localStorage.setItem("wn-phone", phone);
+  localStorage.setItem("wn-name", myName);
+  localStorage.setItem("wn-room", roomCode);
 
   listenMembers();
   listenMessages();
