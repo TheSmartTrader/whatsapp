@@ -70,6 +70,17 @@
     --red: #ef4444;
     --radius: 7.5px;
   }
+  html[data-theme="light"]{
+    --bg:#f0f2f5;
+    --panel:#ffffff;
+    --panel-2:#ffffff;
+    --line:#e9edef;
+    --text:#111b21;
+    --text-dim:#667781;
+    --amber:#008069;
+    --amber-dim:#d9fdd3;
+    --teal:#008069;
+  }
   *{box-sizing:border-box;}
   html,body{height:100%;}
   body{
@@ -325,6 +336,16 @@
     flex-shrink:0;
   }
   #photo-btn:hover{ color:var(--amber); }
+  #file-btn{
+    background:var(--panel);
+    color:var(--text-dim);
+    border:none;
+    width:42px; height:42px;
+    border-radius:50%;
+    font-size:1.1rem;
+    flex-shrink:0;
+  }
+  #file-btn:hover{ color:var(--amber); }
   #photo-status{
     padding:0 20px;
     font-size:0.78rem;
@@ -350,6 +371,99 @@
     width:230px;
     max-width:60vw;
     height:38px;
+  }
+  .msg .bubble.file-bubble{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:9px 12px;
+    background:var(--panel-2);
+    text-decoration:none;
+    color:var(--text);
+  }
+  .file-icon{ font-size:1.6rem; flex-shrink:0; }
+  .file-meta{ display:flex; flex-direction:column; min-width:0; }
+  .file-name{ font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:170px; }
+  .file-size{ font-size:0.7rem; color:var(--text-dim); }
+  .msg .bubble.deleted{
+    font-style:italic;
+    color:var(--text-dim);
+    background:transparent;
+    border:1px dashed var(--line);
+  }
+  .edited-tag{ font-size:0.68rem; color:var(--text-dim); margin-left:4px; }
+  .ticks{ display:inline-flex; vertical-align:middle; margin-left:3px; }
+  .ticks svg{ width:15px; height:11px; }
+  .ticks svg path{ fill:var(--text-dim); }
+  .ticks.seen svg path{ fill:#53bdeb; }
+  .msg-menu-btn{
+    background:transparent; border:none; color:var(--text-dim);
+    font-size:0.95rem; padding:0 4px; cursor:pointer; opacity:0.55;
+    line-height:1;
+  }
+  .msg-menu-btn:hover{ opacity:1; }
+  .msg .who{ display:flex; align-items:center; gap:4px; }
+  .msg.mine .who{ justify-content:flex-end; }
+  .reactions{ display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; padding:0 4px; }
+  .msg.mine .reactions{ justify-content:flex-end; }
+  .reaction-chip{
+    background:var(--panel); border:1px solid var(--line); border-radius:999px;
+    padding:1px 7px; font-size:0.74rem; display:inline-flex; align-items:center;
+    gap:3px; cursor:pointer; color:var(--text);
+  }
+  .reaction-chip.mine-reacted{ border-color:var(--teal); }
+  .msg-popover{
+    position:fixed; background:var(--panel); border:1px solid var(--line);
+    border-radius:12px; padding:8px; box-shadow:0 6px 22px rgba(0,0,0,.4);
+    z-index:60; display:flex; flex-direction:column; gap:1px; min-width:170px;
+  }
+  .msg-popover .emoji-row{ display:flex; gap:5px; padding:4px 3px 9px; border-bottom:1px solid var(--line); margin-bottom:5px; }
+  .msg-popover .emoji-row button{ background:transparent; font-size:1.25rem; padding:2px 4px; border-radius:6px; }
+  .msg-popover .emoji-row button:hover{ background:var(--line); }
+  .msg-popover button.popover-action{
+    background:transparent; color:var(--text); text-align:left; padding:9px 10px;
+    border-radius:7px; font-size:0.85rem;
+  }
+  .msg-popover button.popover-action:hover{ background:var(--line); }
+  .msg-popover button.popover-action.danger{ color:var(--red); }
+  .popover-backdrop{ position:fixed; inset:0; z-index:59; }
+  .icon-btn{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    width:36px; height:36px; border-radius:8px; font-size:1rem;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  #pinned-bar{
+    display:none; padding:8px 16px; background:var(--panel); border-bottom:1px solid var(--line);
+    gap:8px; overflow-x:auto; align-items:center;
+  }
+  #pinned-bar.active{ display:flex; }
+  .pinned-item{
+    flex-shrink:0; background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
+    padding:5px 10px; cursor:pointer; max-width:220px; white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; color:var(--text-dim); font-size:0.78rem;
+  }
+  #search-bar{ display:none; padding:8px 16px; gap:8px; background:var(--panel); border-bottom:1px solid var(--line); }
+  #search-bar.active{ display:flex; }
+  #search-bar input{
+    flex:1; background:var(--bg); border:1px solid var(--line); color:var(--text);
+    padding:8px 12px; border-radius:999px; outline:none; font-size:0.88rem;
+  }
+  #typing-indicator{ padding:0 20px 4px; font-size:0.78rem; color:var(--text-dim); font-style:italic; min-height:0; }
+  .msg.search-hidden{ display:none !important; }
+  .member .last-seen{ font-size:0.68rem; color:var(--text-dim); margin-left:2px; }
+  .member .dot.offline{ background:var(--text-dim); }
+  #dm-bar{
+    display:flex; align-items:center; gap:8px; padding:6px 16px;
+    background:var(--bg);
+  }
+  #dm-bar #dm-lock{ font-size:0.85rem; opacity:0.6; }
+  #dm-target{
+    background:var(--panel); border:1px solid var(--line); color:var(--text);
+    padding:6px 10px; border-radius:999px; font-size:0.8rem; outline:none;
+  }
+  #dm-bar.active #dm-target{ border-color:var(--teal); color:var(--teal); }
+  .private-tag{
+    font-size:0.68rem; color:var(--teal); margin-left:2px; font-weight:600;
   }
 
   /* ---------------- Mic / voice recording ---------------- */
@@ -493,6 +607,10 @@
     }
     aside.open{ transform:translateX(0); }
     .msg{ max-width:80%; }
+    #composer{ gap:6px; padding:8px 10px; }
+    #composer input{ padding:11px 14px; }
+    #photo-btn, #file-btn, #mic-btn, #composer button[type="submit"]{ width:38px; height:38px; font-size:1rem; }
+    #mobile-header{ gap:8px; padding:12px 12px; }
   }
 </style>
 </head>
@@ -524,6 +642,10 @@
     <h2 class="room-title" id="room-title-el">—</h2>
     <p class="room-sub" id="room-count-el">0 online</p>
     <button id="desktop-call-btn" type="button">📞 Call</button>
+    <div style="display:flex; gap:8px; margin-bottom:16px;">
+      <button id="search-toggle-desktop" class="icon-btn" type="button" title="Search messages">🔍</button>
+      <button id="theme-toggle-desktop" class="icon-btn" type="button" title="Toggle dark/light">🌙</button>
+    </div>
     <p class="section-label">Members</p>
     <div id="member-list"></div>
     <div class="me-tag">You're in as <b id="me-name-el">—</b></div>
@@ -535,13 +657,29 @@
         <p class="room-title" id="room-title-el-mobile">—</p>
         <p class="room-sub" id="room-count-el-mobile">0 online</p>
       </div>
+      <button id="search-toggle-mobile" class="icon-btn" type="button" title="Search">🔍</button>
+      <button id="theme-toggle-mobile" class="icon-btn" type="button" title="Theme">🌙</button>
       <button id="mobile-call-btn" type="button" title="Call">📞</button>
     </div>
+    <div id="pinned-bar"></div>
+    <div id="search-bar">
+      <input id="search-input" type="text" placeholder="Search messages…" autocomplete="off" />
+      <button type="button" id="search-close" class="icon-btn" title="Close search">✕</button>
+    </div>
     <div id="messages"></div>
+    <div id="typing-indicator"></div>
     <div id="recording-indicator"><span class="rec-dot"></span><span id="recording-time">0:00</span> Recording… tap mic again to send</div>
+    <div id="dm-bar">
+      <span id="dm-lock">🔒</span>
+      <select id="dm-target">
+        <option value="">Message: Everyone</option>
+      </select>
+    </div>
     <form id="composer">
       <input id="photo-input" type="file" accept="image/*" style="display:none" />
       <button type="button" id="photo-btn" title="Send a photo">📷</button>
+      <input id="file-input" type="file" style="display:none" />
+      <button type="button" id="file-btn" title="Send a file">📎</button>
       <button type="button" id="mic-btn" title="Record a voice message">🎤</button>
       <input id="msg-input" type="text" placeholder="Type a message…" autocomplete="off" />
       <button type="submit">Send</button>
@@ -579,7 +717,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
-  onSnapshot, query, orderBy, limit, serverTimestamp, getDoc
+  onSnapshot, query, orderBy, limit, serverTimestamp, getDoc,
+  arrayUnion, deleteField
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const app = initializeApp(FIREBASE_CONFIG);
@@ -607,6 +746,57 @@ let activeCallId = null;
 let activeCallDoc = null;
 let unsubCallDoc = null;
 let unsubIceCandidates = null;
+
+let messagesLoaded = false;     // becomes true after the first messages snapshot (so we don't "ding" for old history)
+let typingTimeout = null;       // debounce handle for "stopped typing"
+let isTypingNow = false;
+let searchQuery = "";
+let openPopoverEl = null;       // currently-open message action popover, if any
+const QUICK_REACTIONS = ["👍","❤️","😂","😮","😢","🙏"];
+
+// -------------------------------------------------------------------------
+// Theme (dark/light) — saved per-device in localStorage
+// -------------------------------------------------------------------------
+function applyTheme(theme){
+  document.documentElement.setAttribute("data-theme", theme === "light" ? "light" : "dark");
+  const icon = theme === "light" ? "☀️" : "🌙";
+  const dBtn = document.getElementById("theme-toggle-desktop");
+  const mBtn = document.getElementById("theme-toggle-mobile");
+  if (dBtn) dBtn.textContent = icon;
+  if (mBtn) mBtn.textContent = icon;
+}
+function toggleTheme(){
+  const current = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+  const next = current === "light" ? "dark" : "light";
+  localStorage.setItem("wn-theme", next);
+  applyTheme(next);
+}
+applyTheme(localStorage.getItem("wn-theme") || "dark");
+document.getElementById("theme-toggle-desktop").addEventListener("click", toggleTheme);
+document.getElementById("theme-toggle-mobile").addEventListener("click", toggleTheme);
+document.getElementById("dm-target").addEventListener("change", (e) => {
+  document.getElementById("dm-bar").classList.toggle("active", !!e.target.value);
+});
+
+// -------------------------------------------------------------------------
+// Notification sound — short beep via WebAudio, no audio file needed
+// -------------------------------------------------------------------------
+function playNotifySound(){
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    gain.gain.setValueAtTime(0.001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+    osc.onended = () => ctx.close();
+  } catch (e) { /* audio not available — ignore */ }
+}
 
 // -------------------------------------------------------------------------
 // Auth: anonymous sign-in, then wait for join form
@@ -680,10 +870,10 @@ function listenMembers(){
     snap.forEach((d) => {
       const data = d.data();
       const lastSeenMs = data.lastSeen?.toMillis ? data.lastSeen.toMillis() : now;
-      // consider offline if not seen in ~45s
-      if (now - lastSeenMs < 45000){
-        list.push({ id: d.id, name: data.name });
-      }
+      const online = now - lastSeenMs < 45000;
+      const typingMs = data.typingAt?.toMillis ? data.typingAt.toMillis() : 0;
+      const typing = !!data.typing && (now - typingMs < 4000);
+      list.push({ id: d.id, name: data.name, online, lastSeenMs, typing });
     });
     renderMembers(list);
   });
@@ -691,20 +881,34 @@ function listenMembers(){
 
 let currentOtherMembers = []; // members currently online, excluding me — used by header call buttons
 
+function relativeLastSeen(ms){
+  const diffMin = Math.floor((Date.now() - ms) / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return diffMin + "m ago";
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return diffHr + "h ago";
+  return Math.floor(diffHr / 24) + "d ago";
+}
+
 function renderMembers(list){
   const el = document.getElementById("member-list");
-  document.getElementById("room-count-el").textContent = list.length + " online";
-  document.getElementById("room-count-el-mobile").textContent = list.length + " online";
-  currentOtherMembers = list.filter((m) => m.id !== uid);
+  const onlineCount = list.filter((m) => m.online).length;
+  document.getElementById("room-count-el").textContent = onlineCount + " online";
+  document.getElementById("room-count-el-mobile").textContent = onlineCount + " online";
+  currentOtherMembers = list.filter((m) => m.id !== uid && m.online);
+
+  // sort: online first, then by name
+  const sorted = [...list].sort((a, b) => (b.online - a.online) || a.name.localeCompare(b.name));
+
   el.innerHTML = "";
-  list.forEach((m) => {
+  sorted.forEach((m) => {
     const row = document.createElement("div");
     row.className = "member";
     const isMe = m.id === uid;
     row.innerHTML = `
-      <div class="dot"></div>
-      <div class="name">${escapeHtml(m.name)}${isMe ? " (you)" : ""}</div>
-      ${!isMe ? `<button class="call-btn" data-uid="${m.id}" data-name="${escapeHtml(m.name)}">Call</button>` : ""}
+      <div class="dot${m.online ? "" : " offline"}"></div>
+      <div class="name">${escapeHtml(m.name)}${isMe ? " (you)" : ""}${!m.online ? `<span class="last-seen">last seen ${relativeLastSeen(m.lastSeenMs)}</span>` : ""}</div>
+      ${!isMe && m.online ? `<button class="call-btn" data-uid="${m.id}" data-name="${escapeHtml(m.name)}">Call</button>` : ""}
     `;
     el.appendChild(row);
   });
@@ -714,6 +918,28 @@ function renderMembers(list){
       startCall(btn.dataset.uid, btn.dataset.name);
     });
   });
+
+  const typingNames = list.filter((m) => m.id !== uid && m.typing).map((m) => m.name);
+  const typingEl = document.getElementById("typing-indicator");
+  if (typingNames.length === 0){
+    typingEl.textContent = "";
+  } else if (typingNames.length === 1){
+    typingEl.textContent = typingNames[0] + " is typing…";
+  } else {
+    typingEl.textContent = typingNames.join(", ") + " are typing…";
+  }
+
+  updateDmTargetOptions(list);
+}
+
+function updateDmTargetOptions(list){
+  const select = document.getElementById("dm-target");
+  const others = list.filter((m) => m.id !== uid).sort((a, b) => a.name.localeCompare(b.name));
+  const previousValue = select.value;
+  select.innerHTML = `<option value="">Message: Everyone</option>` +
+    others.map((m) => `<option value="${m.id}">Message: ${escapeHtml(m.name)}${m.online ? "" : " (offline)"}</option>`).join("");
+  if (others.some((m) => m.id === previousValue)) select.value = previousValue;
+  document.getElementById("dm-bar").classList.toggle("active", !!select.value);
 }
 
 // -------------------------------------------------------------------------
@@ -757,31 +983,120 @@ function showTransientNotice(msg){
 // -------------------------------------------------------------------------
 // Text chat
 // -------------------------------------------------------------------------
+const TICK_SVG = `<svg viewBox="0 0 16 11"><path d="M1 5.5 L5 9.5 L11 1.5" fill="none" stroke-width="1.6" stroke="currentColor"/></svg>`;
+const TICK_SVG_DOUBLE = `<svg viewBox="0 0 20 11"><path d="M1 5.5 L5 9.5 L11 1.5" fill="none" stroke-width="1.6" stroke="currentColor"/><path d="M6 5.5 L10 9.5 L19 1" fill="none" stroke-width="1.6" stroke="currentColor"/></svg>`;
+
 function listenMessages(){
   const q = query(collection(db, "rooms", roomCode, "messages"), orderBy("createdAt", "asc"), limit(200));
   unsubMessages = onSnapshot(q, (snap) => {
+    // Notification sound for genuinely new incoming messages (skip the initial history load & my own sends)
+    if (messagesLoaded){
+      snap.docChanges().forEach((change) => {
+        if (change.type === "added"){
+          const m = change.doc.data();
+          const visible = !m.toUid || m.toUid === uid || m.uid === uid;
+          if (m.uid !== uid && visible) playNotifySound();
+        }
+      });
+    }
+
     const el = document.getElementById("messages");
     el.innerHTML = "";
+    const pinned = [];
+    const seenUpdates = [];
+
     snap.forEach((d) => {
       const m = d.data();
-      const div = document.createElement("div");
+      const isVisible = !m.toUid || m.toUid === uid || m.uid === uid;
+      if (!isVisible) return; // a private DM between two other people — not mine to see
+
       const mine = m.uid === uid;
+      const div = document.createElement("div");
       div.className = "msg" + (mine ? " mine" : "");
+      div.id = "msg-" + d.id;
       const time = m.createdAt?.toDate ? m.createdAt.toDate().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : "";
-      const bubbleHtml = m.type === "image"
-        ? `<div class="bubble image-bubble"><img src="${m.imageData}" alt="Photo from ${escapeHtml(m.name || "someone")}" /></div>`
-        : m.type === "audio"
-        ? `<div class="bubble audio-bubble"><audio controls preload="none" src="${m.audioData}"></audio></div>`
-        : `<div class="bubble">${escapeHtml(m.text)}</div>`;
+
+      let privateTag = "";
+      if (m.toUid){
+        privateTag = mine
+          ? `<span class="private-tag">🔒 to ${escapeHtml(m.toName || "")}</span>`
+          : `<span class="private-tag">🔒 private</span>`;
+      }
+
+      if (m.pinned) pinned.push({ id: d.id, name: m.name, text: m.deleted ? "Deleted message" : (m.text || (m.type === "image" ? "📷 Photo" : m.type === "audio" ? "🎤 Voice message" : m.type === "file" ? "📎 " + (m.fileName || "File") : "")) });
+
+      // Mark messages from others as seen-by-me (skip if already marked)
+      if (!mine && !m.deleted && !(m.seenBy || []).includes(uid)){
+        seenUpdates.push(d.id);
+      }
+
+      let bubbleHtml;
+      if (m.deleted){
+        bubbleHtml = `<div class="bubble deleted">This message was deleted</div>`;
+      } else if (m.type === "image"){
+        bubbleHtml = `<div class="bubble image-bubble"><img src="${m.imageData}" alt="Photo from ${escapeHtml(m.name || "someone")}" /></div>`;
+      } else if (m.type === "audio"){
+        bubbleHtml = `<div class="bubble audio-bubble"><audio controls preload="none" src="${m.audioData}"></audio></div>`;
+      } else if (m.type === "file"){
+        bubbleHtml = `<a class="bubble file-bubble" href="${m.fileData}" download="${escapeHtml(m.fileName || "file")}"><span class="file-icon">📄</span><span class="file-meta"><span class="file-name">${escapeHtml(m.fileName || "File")}</span><span class="file-size">${formatFileSize(m.fileSize || 0)}</span></span></a>`;
+      } else {
+        bubbleHtml = `<div class="bubble">${escapeHtml(m.text)}${m.edited ? `<span class="edited-tag">(edited)</span>` : ""}</div>`;
+      }
+
+      let ticksHtml = "";
+      if (mine && !m.deleted){
+        const seenByOthers = (m.seenBy || []).length > 0;
+        ticksHtml = `<span class="ticks${seenByOthers ? " seen" : ""}">${seenByOthers ? TICK_SVG_DOUBLE : TICK_SVG}</span>`;
+      }
+
+      let reactionsHtml = "";
+      if (m.reactions && Object.keys(m.reactions).length > 0){
+        const counts = {};
+        let myReaction = null;
+        Object.entries(m.reactions).forEach(([ruid, emoji]) => {
+          counts[emoji] = (counts[emoji] || 0) + 1;
+          if (ruid === uid) myReaction = emoji;
+        });
+        reactionsHtml = `<div class="reactions">${Object.entries(counts).map(([emoji, count]) =>
+          `<span class="reaction-chip${emoji === myReaction ? " mine-reacted" : ""}" data-msgid="${d.id}" data-emoji="${emoji}">${emoji} ${count > 1 ? count : ""}</span>`
+        ).join("")}</div>`;
+      }
+
       div.innerHTML = `
-        <div class="who">${escapeHtml(m.name || "Someone")}</div>
+        <div class="who">
+          ${!mine ? escapeHtml(m.name || "Someone") + (m.pinned ? " 📌" : "") : (m.pinned ? "📌 " : "")}
+          ${privateTag}
+          ${!m.deleted ? `<button class="msg-menu-btn" data-msgid="${d.id}">⋮</button>` : ""}
+        </div>
         ${bubbleHtml}
-        <div class="time">${time}</div>
+        <div class="time">${time}${ticksHtml}</div>
+        ${reactionsHtml}
       `;
       el.appendChild(div);
     });
+
     el.scrollTop = el.scrollHeight;
+    messagesLoaded = true;
+    renderPinnedBar(pinned);
+    applySearchFilter();
+
+    seenUpdates.forEach((msgId) => {
+      updateDoc(doc(db, "rooms", roomCode, "messages", msgId), { seenBy: arrayUnion(uid) }).catch(() => {});
+    });
+
+    el.querySelectorAll(".msg-menu-btn").forEach((btn) => {
+      btn.addEventListener("click", (ev) => openMessagePopover(ev, btn.dataset.msgid));
+    });
+    el.querySelectorAll(".reaction-chip").forEach((chip) => {
+      chip.addEventListener("click", () => toggleReaction(chip.dataset.msgid, chip.dataset.emoji));
+    });
   });
+}
+
+function formatFileSize(bytes){
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
 document.getElementById("composer").addEventListener("submit", async (e) => {
@@ -790,10 +1105,182 @@ document.getElementById("composer").addEventListener("submit", async (e) => {
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
+  setTypingState(false);
   await addDoc(collection(db, "rooms", roomCode, "messages"), {
-    uid, name: myName, text, createdAt: serverTimestamp()
+    uid, name: myName, text, createdAt: serverTimestamp(), ...dmFields()
   });
 });
+
+// Returns { toUid, toName } when a specific member is selected in the
+// "Message: …" dropdown, or {} for a normal group message.
+function dmFields(){
+  const select = document.getElementById("dm-target");
+  if (!select.value) return {};
+  const label = select.options[select.selectedIndex].textContent.replace(/^Message: /, "").replace(/ \(offline\)$/, "");
+  return { toUid: select.value, toName: label };
+}
+
+// -------------------------------------------------------------------------
+// Typing indicator — writes a lightweight "typing" flag onto my member doc
+// -------------------------------------------------------------------------
+function setTypingState(typing){
+  if (!roomCode) return;
+  isTypingNow = typing;
+  setDoc(doc(db, "rooms", roomCode, "members", uid), {
+    name: myName, lastSeen: serverTimestamp(),
+    typing, typingAt: serverTimestamp()
+  }, { merge: true }).catch(() => {});
+}
+document.getElementById("msg-input").addEventListener("input", () => {
+  if (!isTypingNow) setTypingState(true);
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => setTypingState(false), 2500);
+});
+
+// -------------------------------------------------------------------------
+// Pinned messages bar
+// -------------------------------------------------------------------------
+function renderPinnedBar(pinned){
+  const bar = document.getElementById("pinned-bar");
+  if (pinned.length === 0){
+    bar.classList.remove("active");
+    bar.innerHTML = "";
+    return;
+  }
+  bar.classList.add("active");
+  bar.innerHTML = pinned.map((p) =>
+    `<div class="pinned-item" data-msgid="${p.id}">📌 <b style="color:var(--text)">${escapeHtml(p.name || "")}:</b> ${escapeHtml(p.text).slice(0, 60)}</div>`
+  ).join("");
+  bar.querySelectorAll(".pinned-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      const target = document.getElementById("msg-" + item.dataset.msgid);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  });
+}
+
+// -------------------------------------------------------------------------
+// Search
+// -------------------------------------------------------------------------
+function applySearchFilter(){
+  const q = searchQuery.trim().toLowerCase();
+  document.querySelectorAll("#messages .msg").forEach((el) => {
+    if (!q){ el.classList.remove("search-hidden"); return; }
+    const match = el.textContent.toLowerCase().includes(q);
+    el.classList.toggle("search-hidden", !match);
+  });
+}
+function openSearch(){
+  document.getElementById("search-bar").classList.add("active");
+  document.getElementById("search-input").focus();
+}
+function closeSearch(){
+  document.getElementById("search-bar").classList.remove("active");
+  document.getElementById("search-input").value = "";
+  searchQuery = "";
+  applySearchFilter();
+}
+document.getElementById("search-toggle-desktop").addEventListener("click", openSearch);
+document.getElementById("search-toggle-mobile").addEventListener("click", () => { closeSidebar(); openSearch(); });
+document.getElementById("search-close").addEventListener("click", closeSearch);
+document.getElementById("search-input").addEventListener("input", (e) => {
+  searchQuery = e.target.value;
+  applySearchFilter();
+});
+
+// -------------------------------------------------------------------------
+// Message actions: react, edit, delete, pin — shown in a small popover
+// -------------------------------------------------------------------------
+function closePopover(){
+  if (openPopoverEl){ openPopoverEl.remove(); openPopoverEl = null; }
+  const bd = document.querySelector(".popover-backdrop");
+  if (bd) bd.remove();
+}
+
+async function openMessagePopover(ev, msgId){
+  closePopover();
+  const msgRef = doc(db, "rooms", roomCode, "messages", msgId);
+  const snap = await getDoc(msgRef);
+  if (!snap.exists()) return;
+  const m = snap.data();
+  const mine = m.uid === uid;
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "popover-backdrop";
+  backdrop.addEventListener("click", closePopover);
+  document.body.appendChild(backdrop);
+
+  const pop = document.createElement("div");
+  pop.className = "msg-popover";
+  const rect = ev.target.getBoundingClientRect();
+  let top = rect.bottom + 6;
+  let left = Math.min(rect.left, window.innerWidth - 190);
+  pop.style.top = top + "px";
+  pop.style.left = Math.max(8, left) + "px";
+
+  const emojiRow = document.createElement("div");
+  emojiRow.className = "emoji-row";
+  QUICK_REACTIONS.forEach((emoji) => {
+    const b = document.createElement("button");
+    b.textContent = emoji;
+    b.addEventListener("click", () => { toggleReaction(msgId, emoji); closePopover(); });
+    emojiRow.appendChild(b);
+  });
+  pop.appendChild(emojiRow);
+
+  const pinBtn = document.createElement("button");
+  pinBtn.className = "popover-action";
+  pinBtn.textContent = m.pinned ? "Unpin message" : "Pin message";
+  pinBtn.addEventListener("click", () => { updateDoc(msgRef, { pinned: !m.pinned }); closePopover(); });
+  pop.appendChild(pinBtn);
+
+  if (mine && !m.deleted){
+    if (m.type === undefined || m.type === null){
+      const editBtn = document.createElement("button");
+      editBtn.className = "popover-action";
+      editBtn.textContent = "Edit message";
+      editBtn.addEventListener("click", () => { closePopover(); editMessage(msgId, m.text); });
+      pop.appendChild(editBtn);
+    }
+    const delBtn = document.createElement("button");
+    delBtn.className = "popover-action danger";
+    delBtn.textContent = "Delete message";
+    delBtn.addEventListener("click", () => { closePopover(); deleteMessage(msgId); });
+    pop.appendChild(delBtn);
+  }
+
+  document.body.appendChild(pop);
+  openPopoverEl = pop;
+}
+
+async function toggleReaction(msgId, emoji){
+  const msgRef = doc(db, "rooms", roomCode, "messages", msgId);
+  const snap = await getDoc(msgRef);
+  if (!snap.exists()) return;
+  const reactions = snap.data().reactions || {};
+  if (reactions[uid] === emoji){
+    await updateDoc(msgRef, { [`reactions.${uid}`]: deleteField() });
+  } else {
+    await updateDoc(msgRef, { [`reactions.${uid}`]: emoji });
+  }
+}
+
+function editMessage(msgId, currentText){
+  const next = window.prompt("Edit message:", currentText || "");
+  if (next === null) return;
+  const trimmed = next.trim();
+  if (!trimmed || trimmed === currentText) return;
+  updateDoc(doc(db, "rooms", roomCode, "messages", msgId), {
+    text: trimmed, edited: true, editedAt: serverTimestamp()
+  }).catch(() => {});
+}
+
+function deleteMessage(msgId){
+  if (!window.confirm("Delete this message for everyone?")) return;
+  updateDoc(doc(db, "rooms", roomCode, "messages", msgId), {
+    deleted: true, text: "", imageData: deleteField(), audioData: deleteField(), fileData: deleteField()
+  }).catch(() => {});
+}
 
 // -------------------------------------------------------------------------
 // Photo sharing — images are compressed client-side and stored directly
@@ -817,7 +1304,7 @@ photoInput.addEventListener("change", async () => {
     const dataUrl = await compressImage(file);
     photoStatus.textContent = "Sending photo…";
     await addDoc(collection(db, "rooms", roomCode, "messages"), {
-      uid, name: myName, type: "image", imageData: dataUrl, createdAt: serverTimestamp()
+      uid, name: myName, type: "image", imageData: dataUrl, createdAt: serverTimestamp(), ...dmFields()
     });
     photoStatus.textContent = "";
   } catch (e) {
@@ -858,6 +1345,43 @@ function compressImage(file){
     reader.readAsDataURL(file);
   });
 }
+
+// -------------------------------------------------------------------------
+// File sharing — documents/PDFs/etc. Stored the same way as photos: base64
+// directly in the Firestore message doc, so it stays comfortably under the
+// 256 KiB document limit (roughly 180 KB original file size max).
+// -------------------------------------------------------------------------
+const fileBtn = document.getElementById("file-btn");
+const fileInput = document.getElementById("file-input");
+const MAX_FILE_BYTES = 180000; // ~180 KB, leaves headroom after base64 overhead
+
+fileBtn.addEventListener("click", () => fileInput.click());
+
+fileInput.addEventListener("change", async () => {
+  const file = fileInput.files[0];
+  fileInput.value = "";
+  if (!file) return;
+
+  if (file.size > MAX_FILE_BYTES){
+    photoStatus.textContent = "That file is too big — keep it under ~175 KB.";
+    setTimeout(() => { photoStatus.textContent = ""; }, 4000);
+    return;
+  }
+
+  photoStatus.textContent = "Sending file…";
+  try {
+    const dataUrl = await blobToDataUrl(file);
+    await addDoc(collection(db, "rooms", roomCode, "messages"), {
+      uid, name: myName, type: "file",
+      fileData: dataUrl, fileName: file.name, fileSize: file.size,
+      createdAt: serverTimestamp(), ...dmFields()
+    });
+    photoStatus.textContent = "";
+  } catch (e) {
+    photoStatus.textContent = "Couldn't send that file.";
+    setTimeout(() => { photoStatus.textContent = ""; }, 4000);
+  }
+});
 
 // -------------------------------------------------------------------------
 // Voice messages — tap mic to start recording, tap again to stop & send.
@@ -920,7 +1444,7 @@ micBtn.addEventListener("click", async () => {
         return;
       }
       await addDoc(collection(db, "rooms", roomCode, "messages"), {
-        uid, name: myName, type: "audio", audioData: dataUrl, createdAt: serverTimestamp()
+        uid, name: myName, type: "audio", audioData: dataUrl, createdAt: serverTimestamp(), ...dmFields()
       });
       photoStatus.textContent = "";
     } catch (e) {
