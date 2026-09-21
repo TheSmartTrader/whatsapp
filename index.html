@@ -342,6 +342,78 @@
     padding:6px;
     background:var(--panel-2);
   }
+  .msg .bubble.audio-bubble{
+    padding:8px 10px;
+    background:var(--panel-2);
+  }
+  .msg .bubble.audio-bubble audio{
+    width:230px;
+    max-width:60vw;
+    height:38px;
+  }
+
+  /* ---------------- Mic / voice recording ---------------- */
+  #mic-btn{
+    background:var(--panel);
+    color:var(--text-dim);
+    border:none;
+    width:42px; height:42px;
+    border-radius:50%;
+    font-size:1.1rem;
+    flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .15s, color .15s;
+  }
+  #mic-btn:hover{ color:var(--amber); }
+  #mic-btn.recording{
+    background:var(--red);
+    color:#fff;
+    animation:mic-pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes mic-pulse{
+    0%,100%{ box-shadow:0 0 0 0 rgba(239,68,68,0.45); }
+    50%{ box-shadow:0 0 0 8px rgba(239,68,68,0); }
+  }
+  #recording-indicator{
+    display:none;
+    align-items:center;
+    gap:8px;
+    padding:0 20px 6px;
+    font-size:0.82rem;
+    color:var(--red);
+  }
+  #recording-indicator.active{ display:flex; }
+  #recording-indicator .rec-dot{
+    width:8px; height:8px; border-radius:50%;
+    background:var(--red);
+    animation:mic-pulse 1.1s ease-in-out infinite;
+  }
+
+  /* ---------------- Mobile header call button ---------------- */
+  #mobile-call-btn{
+    margin-left:auto;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--teal);
+    width:38px; height:38px;
+    border-radius:50%;
+    font-size:1.05rem;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  #desktop-call-btn{
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--teal);
+    font-size:0.8rem;
+    padding:6px 12px;
+    border-radius:999px;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    margin-bottom:16px;
+  }
+  #desktop-call-btn:hover{ border-color:var(--teal); }
 
   /* ---------------- Call overlay ---------------- */
   #call-overlay{
@@ -451,6 +523,7 @@
   <aside id="sidebar">
     <h2 class="room-title" id="room-title-el">—</h2>
     <p class="room-sub" id="room-count-el">0 online</p>
+    <button id="desktop-call-btn" type="button">📞 Call</button>
     <p class="section-label">Members</p>
     <div id="member-list"></div>
     <div class="me-tag">You're in as <b id="me-name-el">—</b></div>
@@ -462,11 +535,14 @@
         <p class="room-title" id="room-title-el-mobile">—</p>
         <p class="room-sub" id="room-count-el-mobile">0 online</p>
       </div>
+      <button id="mobile-call-btn" type="button" title="Call">📞</button>
     </div>
     <div id="messages"></div>
+    <div id="recording-indicator"><span class="rec-dot"></span><span id="recording-time">0:00</span> Recording… tap mic again to send</div>
     <form id="composer">
       <input id="photo-input" type="file" accept="image/*" style="display:none" />
       <button type="button" id="photo-btn" title="Send a photo">📷</button>
+      <button type="button" id="mic-btn" title="Record a voice message">🎤</button>
       <input id="msg-input" type="text" placeholder="Type a message…" autocomplete="off" />
       <button type="submit">Send</button>
     </form>
@@ -613,10 +689,13 @@ function listenMembers(){
   });
 }
 
+let currentOtherMembers = []; // members currently online, excluding me — used by header call buttons
+
 function renderMembers(list){
   const el = document.getElementById("member-list");
   document.getElementById("room-count-el").textContent = list.length + " online";
   document.getElementById("room-count-el-mobile").textContent = list.length + " online";
+  currentOtherMembers = list.filter((m) => m.id !== uid);
   el.innerHTML = "";
   list.forEach((m) => {
     const row = document.createElement("div");
@@ -652,6 +731,30 @@ document.getElementById("menu-toggle").addEventListener("click", openSidebar);
 document.getElementById("sidebar-backdrop").addEventListener("click", closeSidebar);
 
 // -------------------------------------------------------------------------
+// Header call buttons — like WhatsApp's call icon: call the other person
+// directly if there's exactly one, otherwise open the member list to pick.
+// -------------------------------------------------------------------------
+function handleHeaderCallClick(){
+  if (activeCallId) return;
+  if (currentOtherMembers.length === 0){
+    showTransientNotice("No one else is online to call yet.");
+  } else if (currentOtherMembers.length === 1){
+    const m = currentOtherMembers[0];
+    startCall(m.id, m.name);
+  } else {
+    openSidebar();
+  }
+}
+document.getElementById("mobile-call-btn").addEventListener("click", handleHeaderCallClick);
+document.getElementById("desktop-call-btn").addEventListener("click", handleHeaderCallClick);
+
+function showTransientNotice(msg){
+  const el = document.getElementById("photo-status");
+  el.textContent = msg;
+  setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 3000);
+}
+
+// -------------------------------------------------------------------------
 // Text chat
 // -------------------------------------------------------------------------
 function listenMessages(){
@@ -667,6 +770,8 @@ function listenMessages(){
       const time = m.createdAt?.toDate ? m.createdAt.toDate().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : "";
       const bubbleHtml = m.type === "image"
         ? `<div class="bubble image-bubble"><img src="${m.imageData}" alt="Photo from ${escapeHtml(m.name || "someone")}" /></div>`
+        : m.type === "audio"
+        ? `<div class="bubble audio-bubble"><audio controls preload="none" src="${m.audioData}"></audio></div>`
         : `<div class="bubble">${escapeHtml(m.text)}</div>`;
       div.innerHTML = `
         <div class="who">${escapeHtml(m.name || "Someone")}</div>
@@ -751,6 +856,101 @@ function compressImage(file){
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
+  });
+}
+
+// -------------------------------------------------------------------------
+// Voice messages — tap mic to start recording, tap again to stop & send.
+// Recorded audio is base64-encoded and stored directly in the message
+// document, same approach as photos, with a duration cap to stay well
+// under Firestore's per-document size limit.
+// -------------------------------------------------------------------------
+const micBtn = document.getElementById("mic-btn");
+const recordingIndicator = document.getElementById("recording-indicator");
+const recordingTimeEl = document.getElementById("recording-time");
+const MAX_RECORDING_SECONDS = 120;
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordingStream = null;
+let recordingStartTime = 0;
+let recordingTimerInterval = null;
+
+micBtn.addEventListener("click", async () => {
+  if (mediaRecorder && mediaRecorder.state === "recording"){
+    mediaRecorder.stop(); // onstop handler below sends the message
+    return;
+  }
+  try {
+    recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e){
+    photoStatus.textContent = "Microphone permission denied.";
+    setTimeout(() => { photoStatus.textContent = ""; }, 3000);
+    return;
+  }
+
+  recordedChunks = [];
+  const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+    ? "audio/webm;codecs=opus"
+    : (MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "");
+  mediaRecorder = mimeType ? new MediaRecorder(recordingStream, { mimeType }) : new MediaRecorder(recordingStream);
+
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  mediaRecorder.onstop = async () => {
+    clearInterval(recordingTimerInterval);
+    recordingIndicator.classList.remove("active");
+    micBtn.classList.remove("recording");
+    recordingStream.getTracks().forEach((t) => t.stop());
+    recordingStream = null;
+
+    const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+    if (blob.size < 500){
+      // Recording was essentially instant (accidental tap) — don't send.
+      return;
+    }
+    try {
+      photoStatus.textContent = "Sending voice message…";
+      const dataUrl = await blobToDataUrl(blob);
+      if (dataUrl.length > 900000){
+        photoStatus.textContent = "That voice message is too long — keep it under ~2 minutes.";
+        setTimeout(() => { photoStatus.textContent = ""; }, 4000);
+        return;
+      }
+      await addDoc(collection(db, "rooms", roomCode, "messages"), {
+        uid, name: myName, type: "audio", audioData: dataUrl, createdAt: serverTimestamp()
+      });
+      photoStatus.textContent = "";
+    } catch (e) {
+      photoStatus.textContent = "Couldn't send that voice message.";
+      setTimeout(() => { photoStatus.textContent = ""; }, 4000);
+    }
+  };
+
+  mediaRecorder.start();
+  micBtn.classList.add("recording");
+  recordingIndicator.classList.add("active");
+  recordingStartTime = Date.now();
+  recordingTimeEl.textContent = "0:00";
+  recordingTimerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+    const mm = Math.floor(elapsed / 60);
+    const ss = String(elapsed % 60).padStart(2, "0");
+    recordingTimeEl.textContent = `${mm}:${ss}`;
+    if (elapsed >= MAX_RECORDING_SECONDS && mediaRecorder && mediaRecorder.state === "recording"){
+      mediaRecorder.stop();
+    }
+  }, 250);
+});
+
+function blobToDataUrl(blob){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Couldn't read recording."));
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(blob);
   });
 }
 
