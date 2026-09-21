@@ -52,6 +52,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>WhatsApp New</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0b141a" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
 <style>
   :root{
     --bg: #0b141a;
@@ -937,6 +941,13 @@ function openCallOverlay(name, status, actions){
 
 function closeCallOverlay(){
   document.getElementById("call-overlay").classList.remove("active");
+}
+
+// Register service worker so this site can be installed as an app (PWA).
+if ("serviceWorker" in navigator){
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
 }
 </script>
 </body>
