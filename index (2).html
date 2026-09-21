@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<!--
+  ==========================================================================
+  WhatsApp New — group text chat + voice calls for family & friends
+  ==========================================================================
+
+  SETUP (takes ~5 minutes, completely free, no credit card):
+
+  1. Go to https://console.firebase.google.com and create a new project
+     (name it anything, e.g. "familytalk"). Disable Google Analytics if
+     asked — you don't need it.
+
+  2. In the project, click the "</>" (web) icon to add a web app.
+     Give it any nickname and click "Register app". Firebase will show
+     you a `firebaseConfig` object — copy it.
+
+  3. Paste your copied config into the FIREBASE_CONFIG object below,
+     replacing the placeholder values.
+
+  4. In the Firebase console sidebar go to Build → Authentication →
+     Get started → Sign-in method → enable "Anonymous".
+
+  5. In the Firebase console sidebar go to Build → Firestore Database →
+     Create database → start in PRODUCTION mode → pick any location.
+     Then go to the "Rules" tab and paste in the rules from
+     firestore.rules.txt (included alongside this file), then Publish.
+
+  6. Open this index.html file in a browser (double-click it) — it
+     already works locally. To let family/friends use it from anywhere,
+     host it for free: easiest is Firebase Hosting —
+        npm install -g firebase-tools
+        firebase login
+        firebase init hosting   (pick your project, public dir = this folder)
+        firebase deploy
+     You'll get a free https://your-project.web.app link to share.
+
+  7. Share that link + a "room code" you make up (e.g. "sharma-family")
+     with your people. Anyone who opens the link and enters the same
+     room code + their name lands in the same chat.
+
+  HOW VOICE CALLS WORK
+  Calls are peer-to-peer (WebRTC) using Google's free public STUN
+  servers for NAT traversal. This works reliably for 1-on-1 calls on
+  most home/mobile networks. Group calls in this version top out at a
+  handful of participants at once (each person connects directly to
+  every other person) — a large 50-person live call needs a paid media
+  server, which is out of scope for a free build.
+  ==========================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WhatsApp New</title>
+<style>
+  :root{
+    --bg: #0b141a;
+    --panel: #202c33;
+    --panel-2: #202c33;
+    --line: #2a3942;
+    --text: #e9edef;
+    --text-dim: #8696a0;
+    --amber: #00a884;
+    --amber-dim: #005c4b;
+    --teal: #00a884;
+    --red: #ef4444;
+    --radius: 7.5px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.display{
+    font-family:'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif;
+    font-weight:600;
+    letter-spacing:0;
+  }
+  button{
+    font-family:inherit;
+    cursor:pointer;
+    border:none;
+  }
+  input{
+    font-family:inherit;
+  }
+  /* ---------------- Join screen ---------------- */
+  #join-screen{
+    min-height:100dvh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
+  .join-card{
+    width:100%;
+    max-width:380px;
+  }
+  .join-card .eyebrow-mark{
+    width:36px; height:2px; background:var(--amber); margin-bottom:20px;
+  }
+  .join-card h1{
+    font-size:2.1rem;
+    margin:0 0 6px;
+    color:var(--text);
+  }
+  .join-card p.sub{
+    color:var(--text-dim);
+    margin:0 0 32px;
+    font-size:0.95rem;
+    line-height:1.5;
+  }
+  .field{
+    margin-bottom:16px;
+  }
+  .field label{
+    display:block;
+    font-size:0.78rem;
+    color:var(--text-dim);
+    margin-bottom:6px;
+  }
+  .field input{
+    width:100%;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:12px 14px;
+    border-radius:var(--radius);
+    font-size:0.95rem;
+    outline:none;
+    transition:border-color .15s;
+  }
+  .field input:focus{ border-color:var(--amber); }
+  .btn-primary{
+    width:100%;
+    background:var(--amber);
+    color:#0b141a;
+    font-weight:600;
+    padding:13px 14px;
+    border-radius:var(--radius);
+    font-size:0.95rem;
+    margin-top:6px;
+    transition:filter .15s;
+  }
+  .btn-primary:hover{ filter:brightness(1.08); }
+  .btn-primary:disabled{ opacity:.5; cursor:default; }
+  #join-error{
+    color:var(--red);
+    font-size:0.85rem;
+    margin-top:10px;
+    min-height:1.2em;
+  }
+
+  /* ---------------- App shell ---------------- */
+  #app{
+    display:none;
+    height:100dvh;
+    grid-template-columns: 260px 1fr;
+  }
+  #app.active{ display:grid; }
+  aside{
+    background:var(--panel);
+    border-right:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    padding:20px 16px;
+    overflow-y:auto;
+  }
+  .room-title{
+    font-size:1.15rem;
+    margin:0 0 2px;
+  }
+  .room-sub{
+    color:var(--text-dim);
+    font-size:0.78rem;
+    margin:0 0 22px;
+  }
+  .section-label{
+    font-size:0.72rem;
+    text-transform:uppercase;
+    color:var(--text-dim);
+    letter-spacing:0.04em;
+    margin:0 0 10px;
+  }
+  .member{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:8px 8px;
+    border-radius:8px;
+    margin-bottom:2px;
+  }
+  .member .dot{
+    width:8px; height:8px; border-radius:50%;
+    background:var(--teal);
+    flex-shrink:0;
+  }
+  .member .name{
+    flex:1;
+    font-size:0.9rem;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .member .call-btn{
+    background:transparent;
+    color:var(--teal);
+    font-size:0.78rem;
+    padding:4px 8px;
+    border-radius:6px;
+    border:1px solid var(--line);
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    flex-shrink:0;
+  }
+  .member .call-btn:hover{ border-color:var(--teal); }
+  .me-tag{
+    margin-top:auto;
+    padding-top:16px;
+    border-top:1px solid var(--line);
+    font-size:0.82rem;
+    color:var(--text-dim);
+  }
+  .me-tag b{ color:var(--text); font-weight:500; }
+
+  main{
+    display:flex;
+    flex-direction:column;
+    min-width:0;
+  }
+  #messages{
+    flex:1;
+    overflow-y:auto;
+    padding:24px 28px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+  .msg{
+    max-width:60%;
+    align-self:flex-start;
+  }
+  .msg.mine{ align-self:flex-end; }
+  .msg .who{
+    font-size:0.74rem;
+    color:var(--text-dim);
+    margin-bottom:3px;
+    padding:0 4px;
+  }
+  .msg.mine .who{ text-align:right; }
+  .msg .bubble{
+    background:var(--panel-2);
+    border:none;
+    padding:7px 9px 8px;
+    border-radius:var(--radius) var(--radius) var(--radius) 0;
+    font-size:0.92rem;
+    line-height:1.4;
+    word-wrap:break-word;
+    box-shadow:0 1px 0.5px rgba(11,20,26,.13);
+  }
+  .msg.mine .bubble{
+    background:var(--amber-dim);
+    border-radius:var(--radius) var(--radius) 0 var(--radius);
+  }
+  .msg .time{
+    font-size:0.68rem;
+    color:var(--text-dim);
+    margin-top:3px;
+    padding:0 4px;
+  }
+  .msg.mine .time{ text-align:right; }
+  .msg.system{
+    align-self:center;
+    color:var(--text-dim);
+    font-size:0.78rem;
+  }
+  #composer{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 14px;
+    border-top:none;
+    background:var(--bg);
+  }
+  #composer input{
+    flex:1;
+    background:var(--panel);
+    border:none;
+    color:var(--text);
+    padding:12px 16px;
+    border-radius:999px;
+    font-size:0.94rem;
+    outline:none;
+  }
+  #composer button{
+    background:var(--amber);
+    color:#0b141a;
+    font-weight:700;
+    width:42px; height:42px;
+    border-radius:50%;
+    font-size:0;
+    flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #composer button::after{
+    content:"➤";
+    font-size:1.05rem;
+  }
+  #photo-btn{
+    background:var(--panel);
+    color:var(--text-dim);
+    border:none;
+    width:42px; height:42px;
+    border-radius:50%;
+    font-size:1.15rem;
+    flex-shrink:0;
+  }
+  #photo-btn:hover{ color:var(--amber); }
+  #photo-status{
+    padding:0 20px;
+    font-size:0.78rem;
+    color:var(--text-dim);
+    min-height:0;
+  }
+  .msg .bubble img{
+    max-width:260px;
+    max-height:260px;
+    border-radius:8px;
+    display:block;
+    cursor:pointer;
+  }
+  .msg .bubble.image-bubble{
+    padding:6px;
+    background:var(--panel-2);
+  }
+
+  /* ---------------- Call overlay ---------------- */
+  #call-overlay{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(9,11,17,0.92);
+    z-index:50;
+    align-items:center;
+    justify-content:center;
+    flex-direction:column;
+    gap:22px;
+  }
+  #call-overlay.active{ display:flex; }
+  .call-avatar{
+    width:88px; height:88px;
+    border-radius:50%;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif;
+    font-size:2rem;
+  }
+  #call-name{ font-size:1.3rem; }
+  #call-status{ color:var(--text-dim); font-size:0.88rem; }
+  .call-actions{ display:flex; gap:14px; margin-top:10px; }
+  .call-actions button{
+    padding:11px 22px;
+    border-radius:999px;
+    font-size:0.88rem;
+    font-weight:600;
+  }
+  .call-accept{ background:var(--teal); color:#0a1a18; }
+  .call-decline, .call-end{ background:var(--red); color:#fff; }
+
+  /* ---------------- Mobile header (menu toggle) ---------------- */
+  #mobile-header{
+    display:none;
+    align-items:center;
+    gap:12px;
+    padding:14px 16px;
+    border-bottom:1px solid var(--line);
+    background:var(--panel);
+  }
+  #menu-toggle{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    width:36px; height:36px;
+    border-radius:8px;
+    font-size:1.1rem;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  #mobile-header .room-title{ font-size:1rem; margin:0; }
+  #mobile-header .room-sub{ font-size:0.72rem; margin:0; color:var(--text-dim); }
+
+  #sidebar-backdrop{
+    display:none;
+    position:fixed; inset:0;
+    background:rgba(0,0,0,0.55);
+    z-index:39;
+  }
+  #sidebar-backdrop.active{ display:block; }
+
+  @media (max-width: 720px){
+    #app.active{ grid-template-columns: 1fr; }
+    #mobile-header{ display:flex; }
+    aside{
+      position:fixed;
+      top:0; left:0; bottom:0;
+      width:min(78vw, 300px);
+      transform:translateX(-100%);
+      transition:transform .22s ease;
+      z-index:40;
+      display:flex;
+    }
+    aside.open{ transform:translateX(0); }
+    .msg{ max-width:80%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===================== JOIN SCREEN ===================== -->
+<div id="join-screen">
+  <div class="join-card">
+    <div class="eyebrow-mark"></div>
+    <h1>WhatsApp New</h1>
+    <p class="sub">Enter the same room code as your family or friends to land in the same chat. Anyone with the code and the link can join.</p>
+    <div class="field">
+      <label for="room-input">Room code</label>
+      <input id="room-input" type="text" placeholder="e.g. sharma-family" autocomplete="off" />
+    </div>
+    <div class="field">
+      <label for="name-input">Your name</label>
+      <input id="name-input" type="text" placeholder="e.g. Aisha" autocomplete="off" />
+    </div>
+    <button class="btn-primary" id="join-btn">Join room</button>
+    <div id="join-error"></div>
+  </div>
+</div>
+
+<!-- ===================== MAIN APP ===================== -->
+<div id="app">
+  <div id="sidebar-backdrop"></div>
+  <aside id="sidebar">
+    <h2 class="room-title" id="room-title-el">—</h2>
+    <p class="room-sub" id="room-count-el">0 online</p>
+    <p class="section-label">Members</p>
+    <div id="member-list"></div>
+    <div class="me-tag">You're in as <b id="me-name-el">—</b></div>
+  </aside>
+  <main>
+    <div id="mobile-header">
+      <button id="menu-toggle" title="Members & calls">☰</button>
+      <div>
+        <p class="room-title" id="room-title-el-mobile">—</p>
+        <p class="room-sub" id="room-count-el-mobile">0 online</p>
+      </div>
+    </div>
+    <div id="messages"></div>
+    <form id="composer">
+      <input id="photo-input" type="file" accept="image/*" style="display:none" />
+      <button type="button" id="photo-btn" title="Send a photo">📷</button>
+      <input id="msg-input" type="text" placeholder="Type a message…" autocomplete="off" />
+      <button type="submit">Send</button>
+    </form>
+    <div id="photo-status"></div>
+  </main>
+</div>
+
+<!-- ===================== CALL OVERLAY ===================== -->
+<div id="call-overlay">
+  <div class="call-avatar" id="call-avatar">—</div>
+  <div id="call-name">—</div>
+  <div id="call-status">Calling…</div>
+  <div class="call-actions" id="call-actions"></div>
+  <audio id="remote-audio" autoplay playsinline></audio>
+</div>
+
+<script type="module">
+// =========================================================================
+// 1. FIREBASE CONFIG — replace with YOUR project's config (see comment
+//    at the top of this file for setup steps).
+// =========================================================================
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyA_i4c4_OqwpfGhLjevm-lIXNNnlDCuqtg",
+  authDomain: "group-call-89ab8.firebaseapp.com",
+  projectId: "group-call-89ab8",
+  storageBucket: "group-call-89ab8.firebasestorage.app",
+  messagingSenderId: "1005899391643",
+  appId: "1:1005899391643:web:40fc18711368644bdd9c3e"
+};
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth, signInAnonymously, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
+  onSnapshot, query, orderBy, limit, serverTimestamp, getDoc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const app = initializeApp(FIREBASE_CONFIG);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const STUN_SERVERS = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+};
+
+// -------------------------------------------------------------------------
+// State
+// -------------------------------------------------------------------------
+let uid = null;
+let myName = "";
+let roomCode = "";
+let unsubMessages = null;
+let unsubMembers = null;
+let unsubIncomingCalls = null;
+let presenceInterval = null;
+
+let pc = null;              // active RTCPeerConnection
+let localStream = null;
+let activeCallId = null;
+let activeCallDoc = null;
+let unsubCallDoc = null;
+let unsubIceCandidates = null;
+
+// -------------------------------------------------------------------------
+// Auth: anonymous sign-in, then wait for join form
+// -------------------------------------------------------------------------
+onAuthStateChanged(auth, (user) => {
+  if (user) uid = user.uid;
+});
+signInAnonymously(auth).catch((e) => {
+  showJoinError("Couldn't connect (" + e.code + "). Check your Firebase config at the top of this file.");
+});
+
+function showJoinError(msg){
+  document.getElementById("join-error").textContent = msg;
+}
+
+// -------------------------------------------------------------------------
+// Join flow
+// -------------------------------------------------------------------------
+document.getElementById("join-btn").addEventListener("click", joinRoom);
+document.getElementById("name-input").addEventListener("keydown", (e) => { if (e.key === "Enter") joinRoom(); });
+document.getElementById("room-input").addEventListener("keydown", (e) => { if (e.key === "Enter") joinRoom(); });
+
+async function joinRoom(){
+  const room = document.getElementById("room-input").value.trim().toLowerCase().replace(/\s+/g, "-");
+  const name = document.getElementById("name-input").value.trim();
+  if (!room || !name){
+    showJoinError("Please enter both a room code and your name.");
+    return;
+  }
+  if (!uid){
+    showJoinError("Still connecting… try again in a second.");
+    return;
+  }
+  roomCode = room;
+  myName = name;
+
+  document.getElementById("join-screen").style.display = "none";
+  document.getElementById("app").classList.add("active");
+  document.getElementById("room-title-el").textContent = roomCode;
+  document.getElementById("room-title-el-mobile").textContent = roomCode;
+  document.getElementById("me-name-el").textContent = myName;
+
+  // Register presence
+  await setDoc(doc(db, "rooms", roomCode, "members", uid), {
+    name: myName,
+    lastSeen: serverTimestamp()
+  });
+  presenceInterval = setInterval(() => {
+    setDoc(doc(db, "rooms", roomCode, "members", uid), {
+      name: myName,
+      lastSeen: serverTimestamp()
+    }, { merge: true });
+  }, 20000);
+  window.addEventListener("beforeunload", () => {
+    deleteDoc(doc(db, "rooms", roomCode, "members", uid)).catch(()=>{});
+  });
+
+  listenMembers();
+  listenMessages();
+  listenIncomingCalls();
+}
+
+// -------------------------------------------------------------------------
+// Members / presence list
+// -------------------------------------------------------------------------
+function listenMembers(){
+  const q = collection(db, "rooms", roomCode, "members");
+  unsubMembers = onSnapshot(q, (snap) => {
+    const now = Date.now();
+    const list = [];
+    snap.forEach((d) => {
+      const data = d.data();
+      const lastSeenMs = data.lastSeen?.toMillis ? data.lastSeen.toMillis() : now;
+      // consider offline if not seen in ~45s
+      if (now - lastSeenMs < 45000){
+        list.push({ id: d.id, name: data.name });
+      }
+    });
+    renderMembers(list);
+  });
+}
+
+function renderMembers(list){
+  const el = document.getElementById("member-list");
+  document.getElementById("room-count-el").textContent = list.length + " online";
+  document.getElementById("room-count-el-mobile").textContent = list.length + " online";
+  el.innerHTML = "";
+  list.forEach((m) => {
+    const row = document.createElement("div");
+    row.className = "member";
+    const isMe = m.id === uid;
+    row.innerHTML = `
+      <div class="dot"></div>
+      <div class="name">${escapeHtml(m.name)}${isMe ? " (you)" : ""}</div>
+      ${!isMe ? `<button class="call-btn" data-uid="${m.id}" data-name="${escapeHtml(m.name)}">Call</button>` : ""}
+    `;
+    el.appendChild(row);
+  });
+  el.querySelectorAll(".call-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      closeSidebar();
+      startCall(btn.dataset.uid, btn.dataset.name);
+    });
+  });
+}
+
+// -------------------------------------------------------------------------
+// Mobile members/call drawer
+// -------------------------------------------------------------------------
+function openSidebar(){
+  document.getElementById("sidebar").classList.add("open");
+  document.getElementById("sidebar-backdrop").classList.add("active");
+}
+function closeSidebar(){
+  document.getElementById("sidebar").classList.remove("open");
+  document.getElementById("sidebar-backdrop").classList.remove("active");
+}
+document.getElementById("menu-toggle").addEventListener("click", openSidebar);
+document.getElementById("sidebar-backdrop").addEventListener("click", closeSidebar);
+
+// -------------------------------------------------------------------------
+// Text chat
+// -------------------------------------------------------------------------
+function listenMessages(){
+  const q = query(collection(db, "rooms", roomCode, "messages"), orderBy("createdAt", "asc"), limit(200));
+  unsubMessages = onSnapshot(q, (snap) => {
+    const el = document.getElementById("messages");
+    el.innerHTML = "";
+    snap.forEach((d) => {
+      const m = d.data();
+      const div = document.createElement("div");
+      const mine = m.uid === uid;
+      div.className = "msg" + (mine ? " mine" : "");
+      const time = m.createdAt?.toDate ? m.createdAt.toDate().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : "";
+      const bubbleHtml = m.type === "image"
+        ? `<div class="bubble image-bubble"><img src="${m.imageData}" alt="Photo from ${escapeHtml(m.name || "someone")}" /></div>`
+        : `<div class="bubble">${escapeHtml(m.text)}</div>`;
+      div.innerHTML = `
+        <div class="who">${escapeHtml(m.name || "Someone")}</div>
+        ${bubbleHtml}
+        <div class="time">${time}</div>
+      `;
+      el.appendChild(div);
+    });
+    el.scrollTop = el.scrollHeight;
+  });
+}
+
+document.getElementById("composer").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = document.getElementById("msg-input");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  await addDoc(collection(db, "rooms", roomCode, "messages"), {
+    uid, name: myName, text, createdAt: serverTimestamp()
+  });
+});
+
+// -------------------------------------------------------------------------
+// Photo sharing — images are compressed client-side and stored directly
+// in the Firestore message document (no paid Storage/Blaze plan needed).
+// Firestore caps a document at 256 KiB, so we keep the compressed photo
+// comfortably under that.
+// -------------------------------------------------------------------------
+const photoBtn = document.getElementById("photo-btn");
+const photoInput = document.getElementById("photo-input");
+const photoStatus = document.getElementById("photo-status");
+
+photoBtn.addEventListener("click", () => photoInput.click());
+
+photoInput.addEventListener("change", async () => {
+  const file = photoInput.files[0];
+  photoInput.value = "";
+  if (!file) return;
+
+  photoStatus.textContent = "Preparing photo…";
+  try {
+    const dataUrl = await compressImage(file);
+    photoStatus.textContent = "Sending photo…";
+    await addDoc(collection(db, "rooms", roomCode, "messages"), {
+      uid, name: myName, type: "image", imageData: dataUrl, createdAt: serverTimestamp()
+    });
+    photoStatus.textContent = "";
+  } catch (e) {
+    photoStatus.textContent = e.message || "Couldn't send that photo — try a smaller image.";
+    setTimeout(() => { photoStatus.textContent = ""; }, 4000);
+  }
+});
+
+// Resizes the image and re-encodes it as JPEG, shrinking quality/size
+// until the base64 result comfortably fits inside a Firestore document.
+function compressImage(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Couldn't read that file."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("That file doesn't look like an image."));
+      img.onload = () => {
+        const MAX_BASE64_CHARS = 180000; // leaves headroom under 256 KiB doc limit
+        let maxSide = 900;
+        let quality = 0.7;
+        let dataUrl = renderToDataUrl(img, maxSide, quality);
+
+        while (dataUrl.length > MAX_BASE64_CHARS && (maxSide > 300 || quality > 0.3)){
+          if (quality > 0.3) quality -= 0.15;
+          else maxSide -= 150;
+          dataUrl = renderToDataUrl(img, maxSide, quality);
+        }
+
+        if (dataUrl.length > MAX_BASE64_CHARS){
+          reject(new Error("That photo is too large even after compressing — try a smaller one."));
+          return;
+        }
+        resolve(dataUrl);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderToDataUrl(img, maxSide, quality){
+  let { width, height } = img;
+  if (width > height && width > maxSide){
+    height = Math.round(height * (maxSide / width));
+    width = maxSide;
+  } else if (height > maxSide){
+    width = Math.round(width * (maxSide / height));
+    height = maxSide;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
+function escapeHtml(s){
+  const d = document.createElement("div");
+  d.textContent = s ?? "";
+  return d.innerHTML;
+}
+
+// -------------------------------------------------------------------------
+// Voice calls (WebRTC, 1-to-1, signaled through Firestore)
+// -------------------------------------------------------------------------
+function listenIncomingCalls(){
+  const q = collection(db, "rooms", roomCode, "calls");
+  unsubIncomingCalls = onSnapshot(q, (snap) => {
+    snap.docChanges().forEach((change) => {
+      const call = change.doc.data();
+      if (change.type === "added" && call.calleeUid === uid && call.status === "ringing" && !activeCallId){
+        showIncomingCall(change.doc.id, call);
+      }
+    });
+  });
+}
+
+async function startCall(calleeUid, calleeName){
+  if (activeCallId) return;
+  const callDoc = await addDoc(collection(db, "rooms", roomCode, "calls"), {
+    callerUid: uid, callerName: myName,
+    calleeUid, calleeName,
+    status: "ringing", createdAt: serverTimestamp()
+  });
+  activeCallId = callDoc.id;
+  openCallOverlay(calleeName, "Calling…", [
+    { label: "End", cls: "call-end", onClick: () => endCall("cancelled") }
+  ]);
+
+  pc = new RTCPeerConnection(STUN_SERVERS);
+  await attachLocalAudio();
+  wireRemoteAudio();
+  wireIceCandidates(callDoc.id, "callerCandidates");
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await updateDoc(doc(db, "rooms", roomCode, "calls", callDoc.id), {
+    offer: { type: offer.type, sdp: offer.sdp }
+  });
+
+  unsubCallDoc = onSnapshot(doc(db, "rooms", roomCode, "calls", callDoc.id), async (d) => {
+    const data = d.data();
+    if (!data) return;
+    if (data.status === "declined"){ cleanupCall("Call declined"); return; }
+    if (data.status === "ended"){ cleanupCall("Call ended"); return; }
+    if (data.answer && pc && !pc.currentRemoteDescription){
+      await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+      document.getElementById("call-status").textContent = "Connected";
+    }
+  });
+  listenRemoteCandidates(callDoc.id, "calleeCandidates");
+}
+
+function showIncomingCall(callId, call){
+  activeCallId = callId;
+  openCallOverlay(call.callerName, "Incoming call…", [
+    { label: "Decline", cls: "call-decline", onClick: () => declineCall(callId) },
+    { label: "Accept", cls: "call-accept", onClick: () => acceptCall(callId, call) }
+  ]);
+}
+
+async function acceptCall(callId, call){
+  document.getElementById("call-status").textContent = "Connecting…";
+  pc = new RTCPeerConnection(STUN_SERVERS);
+  await attachLocalAudio();
+  wireRemoteAudio();
+  wireIceCandidates(callId, "calleeCandidates");
+
+  await pc.setRemoteDescription(new RTCSessionDescription(call.offer));
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  await updateDoc(doc(db, "rooms", roomCode, "calls", callId), {
+    answer: { type: answer.type, sdp: answer.sdp },
+    status: "connected"
+  });
+  document.getElementById("call-status").textContent = "Connected";
+  document.getElementById("call-actions").innerHTML = "";
+  const endBtn = document.createElement("button");
+  endBtn.className = "call-end"; endBtn.textContent = "End";
+  endBtn.onclick = () => endCall("ended");
+  document.getElementById("call-actions").appendChild(endBtn);
+
+  listenRemoteCandidates(callId, "callerCandidates");
+
+  unsubCallDoc = onSnapshot(doc(db, "rooms", roomCode, "calls", callId), (d) => {
+    const data = d.data();
+    if (data && data.status === "ended") cleanupCall("Call ended");
+  });
+}
+
+async function declineCall(callId){
+  await updateDoc(doc(db, "rooms", roomCode, "calls", callId), { status: "declined" });
+  cleanupCall("Call declined");
+}
+
+async function endCall(reason){
+  if (activeCallId){
+    updateDoc(doc(db, "rooms", roomCode, "calls", activeCallId), { status: "ended" }).catch(()=>{});
+  }
+  cleanupCall(reason === "cancelled" ? "Call cancelled" : "Call ended");
+}
+
+function cleanupCall(){
+  if (pc){ pc.close(); pc = null; }
+  if (localStream){ localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  if (unsubCallDoc){ unsubCallDoc(); unsubCallDoc = null; }
+  if (unsubIceCandidates){ unsubIceCandidates(); unsubIceCandidates = null; }
+  activeCallId = null;
+  closeCallOverlay();
+}
+
+async function attachLocalAudio(){
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e){
+    document.getElementById("call-status").textContent = "Microphone permission denied";
+    throw e;
+  }
+  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+}
+
+function wireRemoteAudio(){
+  const audioEl = document.getElementById("remote-audio");
+  const remoteStream = new MediaStream();
+  audioEl.srcObject = remoteStream;
+  pc.ontrack = (event) => {
+    event.streams[0].getTracks().forEach(t => remoteStream.addTrack(t));
+  };
+}
+
+function wireIceCandidates(callId, subcollectionName){
+  pc.onicecandidate = (event) => {
+    if (event.candidate){
+      addDoc(collection(db, "rooms", roomCode, "calls", callId, subcollectionName), event.candidate.toJSON());
+    }
+  };
+}
+
+function listenRemoteCandidates(callId, subcollectionName){
+  unsubIceCandidates = onSnapshot(collection(db, "rooms", roomCode, "calls", callId, subcollectionName), (snap) => {
+    snap.docChanges().forEach((change) => {
+      if (change.type === "added" && pc){
+        pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(()=>{});
+      }
+    });
+  });
+}
+
+function openCallOverlay(name, status, actions){
+  document.getElementById("call-overlay").classList.add("active");
+  document.getElementById("call-avatar").textContent = (name || "?").charAt(0).toUpperCase();
+  document.getElementById("call-name").textContent = name;
+  document.getElementById("call-status").textContent = status;
+  const actionsEl = document.getElementById("call-actions");
+  actionsEl.innerHTML = "";
+  actions.forEach(a => {
+    const btn = document.createElement("button");
+    btn.className = a.cls;
+    btn.textContent = a.label;
+    btn.onclick = a.onClick;
+    actionsEl.appendChild(btn);
+  });
+}
+
+function closeCallOverlay(){
+  document.getElementById("call-overlay").classList.remove("active");
+}
+</script>
+</body>
+</html>
