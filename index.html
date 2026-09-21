@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <!--
   ==========================================================================
-  WhatsApp New — group text chat + voice calls for family & friends
+  Solangi Chat — search people by mobile number, message & voice call
   ==========================================================================
 
   SETUP (takes ~5 minutes, completely free, no credit card):
 
   1. Go to https://console.firebase.google.com and create a new project
-     (name it anything, e.g. "familytalk"). Disable Google Analytics if
+     (name it anything, e.g. "solangichat"). Disable Google Analytics if
      asked — you don't need it.
 
   2. In the project, click the "</>" (web) icon to add a web app.
@@ -15,15 +15,42 @@
      you a `firebaseConfig` object — copy it.
 
   3. Paste your copied config into the FIREBASE_CONFIG object below,
-     replacing the placeholder values.
+     replacing the placeholder values. (If you already had a config from
+     before, you can keep using the same one — no need to make a new
+     Firebase project just because this file was updated.)
 
   4. In the Firebase console sidebar go to Build → Authentication →
      Get started → Sign-in method → enable "Anonymous".
 
   5. In the Firebase console sidebar go to Build → Firestore Database →
      Create database → start in PRODUCTION mode → pick any location.
-     Then go to the "Rules" tab and paste in the rules from
-     firestore.rules.txt (included alongside this file), then Publish.
+     Then go to the "Rules" tab, delete everything there, paste in the
+     rules below, then click Publish.
+
+     rules_version = '2';
+     service cloud.firestore {
+       match /databases/{database}/documents {
+         match /profiles/{phone} {
+           allow read, write: if request.auth != null;
+         }
+         match /chats/{chatId} {
+           allow read, write: if request.auth != null;
+           match /{subcollection}/{docId} {
+             allow read, write: if request.auth != null;
+           }
+         }
+         match /calls/{callId} {
+           allow read, write: if request.auth != null;
+           match /{subcollection}/{docId} {
+             allow read, write: if request.auth != null;
+           }
+         }
+       }
+     }
+
+     (If you were using this app before this update, this replaces the
+     old rules that only covered a "rooms" collection — the app no
+     longer uses room codes, so the old rules won't work anymore.)
 
   6. Open this index.html file in a browser (double-click it) — it
      already works locally. To let family/friends use it from anywhere,
@@ -34,24 +61,25 @@
         firebase deploy
      You'll get a free https://your-project.web.app link to share.
 
-  7. Share that link + a "room code" you make up (e.g. "sharma-family")
-     with your people. Anyone who opens the link and enters the same
-     room code + their name lands in the same chat.
+  7. Share that link with your people. Anyone who opens the link
+     registers with just their mobile number and name — no room code.
+     Once registered, they can search for anyone else by mobile number
+     and start messaging or calling them directly.
 
   HOW VOICE CALLS WORK
   Calls are peer-to-peer (WebRTC) using Google's free public STUN
-  servers for NAT traversal. This works reliably for 1-on-1 calls on
-  most home/mobile networks. Group calls in this version top out at a
-  handful of participants at once (each person connects directly to
-  every other person) — a large 50-person live call needs a paid media
-  server, which is out of scope for a free build.
+  servers for NAT traversal, with a free TURN relay as fallback. This
+  works reliably for 1-on-1 calls on most home/mobile networks. You can
+  call someone directly from search results or your chat list — they
+  don't need to have your chat open first, they'll get a ringing call
+  no matter where they are in the app.
   ==========================================================================
 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>WhatsApp New</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Solangi Chat</title>
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#0b141a" />
 <link rel="icon" href="icon-192.png" />
@@ -82,13 +110,15 @@
     --teal:#008069;
   }
   *{box-sizing:border-box;}
-  html,body{height:100%;}
+  html,body{height:100%; overflow-x:hidden; width:100%;}
   body{
     margin:0;
     background:var(--bg);
     color:var(--text);
     font-family:'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif;
     -webkit-font-smoothing:antialiased;
+    -webkit-text-size-adjust:100%;
+    overflow-x:hidden;
   }
   h1,h2,h3,.display{
     font-family:'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif;
@@ -102,14 +132,20 @@
   }
   input{
     font-family:inherit;
+    max-width:100%;
   }
-  /* ---------------- Join screen ---------------- */
+  img, svg{ max-width:100%; }
+  .icon{ width:19px; height:19px; display:block; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .icon.filled{ fill:currentColor; stroke:none; }
+
+  /* ---------------- Join / register screen ---------------- */
   #join-screen{
     min-height:100dvh;
     display:flex;
     align-items:center;
     justify-content:center;
     padding:24px;
+    width:100%;
   }
   .join-card{
     width:100%;
@@ -170,84 +206,202 @@
     min-height:1.2em;
   }
 
-  /* ---------------- App shell ---------------- */
+  /* ---------------- App shell (two-pane, WhatsApp-style) ---------------- */
   #app{
     display:none;
     height:100dvh;
-    grid-template-columns: 260px 1fr;
+    width:100%;
+    grid-template-columns: 340px 1fr;
   }
   #app.active{ display:grid; }
-  aside{
+
+  /* ----- Left pane: search + chat list ----- */
+  #home-pane{
     background:var(--panel);
     border-right:1px solid var(--line);
     display:flex;
     flex-direction:column;
-    padding:20px 16px;
-    overflow-y:auto;
+    min-width:0;
+    height:100%;
   }
-  .room-title{
-    font-size:1.15rem;
-    margin:0 0 2px;
-  }
-  .room-sub{
-    color:var(--text-dim);
-    font-size:0.78rem;
-    margin:0 0 22px;
-  }
-  .section-label{
-    font-size:0.72rem;
-    text-transform:uppercase;
-    color:var(--text-dim);
-    letter-spacing:0.04em;
-    margin:0 0 10px;
-  }
-  .member{
+  #home-header{
     display:flex;
     align-items:center;
     gap:10px;
-    padding:8px 8px;
-    border-radius:8px;
-    margin-bottom:2px;
-  }
-  .member .dot{
-    width:8px; height:8px; border-radius:50%;
-    background:var(--teal);
+    padding:16px 16px 12px;
     flex-shrink:0;
   }
-  .member .name{
+  #home-header h2{
+    margin:0;
+    font-size:1.2rem;
     flex:1;
-    font-size:0.9rem;
+    min-width:0;
     overflow:hidden;
     text-overflow:ellipsis;
     white-space:nowrap;
   }
-  .member .call-btn{
-    background:transparent;
-    color:var(--teal);
-    font-size:0.78rem;
-    padding:4px 8px;
-    border-radius:6px;
-    border:1px solid var(--line);
-    display:inline-flex;
-    align-items:center;
-    gap:4px;
+  #search-wrap{
+    padding:0 16px 12px;
     flex-shrink:0;
   }
-  .member .call-btn:hover{ border-color:var(--teal); }
-  .me-tag{
-    margin-top:auto;
-    padding-top:16px;
-    border-top:1px solid var(--line);
-    font-size:0.82rem;
-    color:var(--text-dim);
+  #search-wrap-inner{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:var(--bg);
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:9px 14px;
   }
-  .me-tag b{ color:var(--text); font-weight:500; }
+  #search-wrap-inner .icon{ color:var(--text-dim); flex-shrink:0; width:16px; height:16px; }
+  #phone-search-input{
+    flex:1;
+    min-width:0;
+    background:transparent;
+    border:none;
+    color:var(--text);
+    font-size:0.9rem;
+    outline:none;
+  }
+  #search-clear-btn{
+    display:none;
+    background:transparent;
+    color:var(--text-dim);
+    font-size:0.9rem;
+    padding:0 2px;
+    flex-shrink:0;
+  }
+  #search-clear-btn.show{ display:block; }
+  #search-hint{
+    padding:2px 16px 10px;
+    font-size:0.76rem;
+    color:var(--text-dim);
+    flex-shrink:0;
+  }
 
+  #list-scroll{
+    flex:1;
+    overflow-y:auto;
+    min-height:0;
+  }
+  .list-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:11px 16px;
+    cursor:pointer;
+    border-bottom:1px solid transparent;
+  }
+  .list-row:hover{ background:var(--panel-2); filter:brightness(1.07); }
+  .row-avatar{
+    width:44px; height:44px; border-radius:50%;
+    background:var(--amber-dim);
+    color:var(--teal);
+    display:flex; align-items:center; justify-content:center;
+    font-size:1.05rem; font-weight:600;
+    flex-shrink:0;
+  }
+  html[data-theme="dark"] .row-avatar{ color:#e9edef; background:#374045; }
+  .row-body{ flex:1; min-width:0; }
+  .row-top{ display:flex; justify-content:space-between; gap:8px; align-items:baseline; }
+  .row-name{ font-size:0.95rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row-time{ font-size:0.7rem; color:var(--text-dim); flex-shrink:0; }
+  .row-sub{ display:flex; justify-content:space-between; gap:8px; align-items:center; margin-top:2px; }
+  .row-preview{ font-size:0.82rem; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row-call-btn{
+    background:transparent;
+    color:var(--teal);
+    width:32px; height:32px;
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .row-call-btn:hover{ background:var(--line); }
+  #empty-list-msg, #empty-search-msg{
+    padding:40px 24px;
+    text-align:center;
+    color:var(--text-dim);
+    font-size:0.86rem;
+    line-height:1.6;
+  }
+  #search-results-view{ display:none; flex-direction:column; height:100%; min-height:0; }
+  #search-results-view.active{ display:flex; }
+  #chat-list-view{ display:flex; flex-direction:column; height:100%; min-height:0; }
+
+  #home-footer{
+    padding:12px 16px;
+    border-top:1px solid var(--line);
+    font-size:0.8rem;
+    color:var(--text-dim);
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  #home-footer b{ color:var(--text); font-weight:500; }
+  #home-footer .footer-text{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #switch-account-link{ color:var(--text-dim); font-size:0.72rem; flex-shrink:0; }
+
+  /* ----- Right pane: active chat ----- */
   main{
     display:flex;
     flex-direction:column;
     min-width:0;
+    height:100%;
   }
+  #chat-empty-state{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:var(--text-dim);
+    font-size:0.9rem;
+    text-align:center;
+    padding:24px;
+    flex-direction:column;
+    gap:10px;
+  }
+  #chat-empty-state .icon{ width:48px; height:48px; opacity:0.35; }
+  #chat-view{ display:none; flex-direction:column; min-height:0; flex:1; }
+  #chat-view.active{ display:flex; }
+  #chat-empty-state.hide{ display:none; }
+
+  #chat-header{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 16px;
+    border-bottom:1px solid var(--line);
+    background:var(--panel);
+    flex-shrink:0;
+  }
+  #back-to-list-btn{
+    background:transparent;
+    color:var(--text);
+    width:34px; height:34px;
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  #back-to-list-btn:hover{ background:var(--line); }
+  .peer-avatar{
+    width:38px; height:38px; border-radius:50%;
+    background:var(--amber-dim); color:var(--teal);
+    display:flex; align-items:center; justify-content:center;
+    font-weight:600; flex-shrink:0;
+  }
+  html[data-theme="dark"] .peer-avatar{ color:#e9edef; background:#374045; }
+  #chat-header-info{ flex:1; min-width:0; }
+  #peer-name-el{ font-size:0.98rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #peer-status-el{ font-size:0.75rem; color:var(--text-dim); min-height:1em; }
+  #header-actions{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
+  #header-actions .icon-btn{
+    background:transparent; border:none; color:var(--text-dim);
+    width:36px; height:36px; border-radius:50%;
+  }
+  #header-actions .icon-btn:hover{ background:var(--line); color:var(--text); }
+  #call-header-btn{ color:var(--teal); }
+
   #messages{
     flex:1;
     overflow-y:auto;
@@ -255,6 +409,7 @@
     display:flex;
     flex-direction:column;
     gap:14px;
+    min-height:0;
   }
   .msg{
     max-width:60%;
@@ -266,8 +421,9 @@
     color:var(--text-dim);
     margin-bottom:3px;
     padding:0 4px;
+    display:flex; align-items:center; gap:4px;
   }
-  .msg.mine .who{ text-align:right; }
+  .msg.mine .who{ justify-content:flex-end; }
   .msg .bubble{
     background:var(--panel-2);
     border:none;
@@ -297,13 +453,15 @@
   #composer{
     display:flex;
     align-items:center;
-    gap:10px;
+    gap:8px;
     padding:10px 14px;
     border-top:none;
     background:var(--bg);
+    flex-shrink:0;
   }
   #composer input{
     flex:1;
+    min-width:0;
     background:var(--panel);
     border:none;
     color:var(--text);
@@ -313,44 +471,28 @@
     outline:none;
   }
   #composer button{
-    background:var(--amber);
-    color:#0b141a;
-    font-weight:700;
-    width:42px; height:42px;
-    border-radius:50%;
-    font-size:0;
     flex-shrink:0;
     display:flex; align-items:center; justify-content:center;
-  }
-  #composer button::after{
-    content:"➤";
-    font-size:1.05rem;
-  }
-  #photo-btn{
-    background:var(--panel);
-    color:var(--text-dim);
-    border:none;
     width:42px; height:42px;
     border-radius:50%;
-    font-size:1.15rem;
-    flex-shrink:0;
   }
-  #photo-btn:hover{ color:var(--amber); }
-  #file-btn{
-    background:var(--panel);
-    color:var(--text-dim);
-    border:none;
-    width:42px; height:42px;
-    border-radius:50%;
-    font-size:1.1rem;
-    flex-shrink:0;
+  #composer button[type="submit"]{
+    background:var(--amber);
+    color:#0b141a;
   }
-  #file-btn:hover{ color:var(--amber); }
+  #composer button[type="submit"] .icon{ color:#0b141a; margin-left:2px; }
+  #photo-btn{ background:var(--panel); color:#3fa9f5; }
+  #photo-btn:hover{ filter:brightness(1.15); }
+  #file-btn{ background:var(--panel); color:#c98fe0; }
+  #file-btn:hover{ filter:brightness(1.15); }
+  #mic-btn{ background:var(--panel); color:var(--text-dim); transition:background .15s, color .15s; }
+  #mic-btn:hover{ color:var(--amber); }
   #photo-status{
     padding:0 20px;
     font-size:0.78rem;
     color:var(--text-dim);
     min-height:0;
+    flex-shrink:0;
   }
   .msg .bubble img{
     max-width:260px;
@@ -381,7 +523,7 @@
     text-decoration:none;
     color:var(--text);
   }
-  .file-icon{ font-size:1.6rem; flex-shrink:0; }
+  .file-icon{ flex-shrink:0; color:var(--teal); }
   .file-meta{ display:flex; flex-direction:column; min-width:0; }
   .file-name{ font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:170px; }
   .file-size{ font-size:0.7rem; color:var(--text-dim); }
@@ -398,12 +540,11 @@
   .ticks.seen svg path{ fill:#53bdeb; }
   .msg-menu-btn{
     background:transparent; border:none; color:var(--text-dim);
-    font-size:0.95rem; padding:0 4px; cursor:pointer; opacity:0.55;
-    line-height:1;
+    padding:0 4px; cursor:pointer; opacity:0.55;
+    line-height:1; display:flex; align-items:center;
   }
+  .msg-menu-btn .icon{ width:15px; height:15px; }
   .msg-menu-btn:hover{ opacity:1; }
-  .msg .who{ display:flex; align-items:center; gap:4px; }
-  .msg.mine .who{ justify-content:flex-end; }
   .reactions{ display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; padding:0 4px; }
   .msg.mine .reactions{ justify-content:flex-end; }
   .reaction-chip{
@@ -427,14 +568,10 @@
   .msg-popover button.popover-action:hover{ background:var(--line); }
   .msg-popover button.popover-action.danger{ color:var(--red); }
   .popover-backdrop{ position:fixed; inset:0; z-index:59; }
-  .icon-btn{
-    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
-    width:36px; height:36px; border-radius:8px; font-size:1rem;
-    display:flex; align-items:center; justify-content:center; flex-shrink:0;
-  }
+
   #pinned-bar{
     display:none; padding:8px 16px; background:var(--panel); border-bottom:1px solid var(--line);
-    gap:8px; overflow-x:auto; align-items:center;
+    gap:8px; overflow-x:auto; align-items:center; flex-shrink:0;
   }
   #pinned-bar.active{ display:flex; }
   .pinned-item{
@@ -442,43 +579,26 @@
     padding:5px 10px; cursor:pointer; max-width:220px; white-space:nowrap; overflow:hidden;
     text-overflow:ellipsis; color:var(--text-dim); font-size:0.78rem;
   }
-  #search-bar{ display:none; padding:8px 16px; gap:8px; background:var(--panel); border-bottom:1px solid var(--line); }
-  #search-bar.active{ display:flex; }
-  #search-bar input{
+  #chat-search-bar{ display:none; padding:8px 16px; gap:8px; background:var(--panel); border-bottom:1px solid var(--line); flex-shrink:0; }
+  #chat-search-bar.active{ display:flex; }
+  #chat-search-bar input{
     flex:1; background:var(--bg); border:1px solid var(--line); color:var(--text);
     padding:8px 12px; border-radius:999px; outline:none; font-size:0.88rem;
   }
-  #typing-indicator{ padding:0 20px 4px; font-size:0.78rem; color:var(--text-dim); font-style:italic; min-height:0; }
+  #typing-indicator{ padding:0 20px 4px; font-size:0.78rem; color:var(--text-dim); font-style:italic; min-height:0; flex-shrink:0; }
   .msg.search-hidden{ display:none !important; }
-  .member .last-seen{ font-size:0.68rem; color:var(--text-dim); margin-left:2px; }
-  .member .dot.offline{ background:var(--text-dim); }
-  #dm-bar{
-    display:flex; align-items:center; gap:8px; padding:6px 16px;
-    background:var(--bg);
-  }
-  #dm-bar #dm-lock{ font-size:0.85rem; opacity:0.6; }
-  #dm-target{
-    background:var(--panel); border:1px solid var(--line); color:var(--text);
-    padding:6px 10px; border-radius:999px; font-size:0.8rem; outline:none;
-  }
-  #dm-bar.active #dm-target{ border-color:var(--teal); color:var(--teal); }
-  .private-tag{
-    font-size:0.68rem; color:var(--teal); margin-left:2px; font-weight:600;
-  }
 
   /* ---------------- Mic / voice recording ---------------- */
-  #mic-btn{
-    background:var(--panel);
-    color:var(--text-dim);
-    border:none;
-    width:42px; height:42px;
-    border-radius:50%;
-    font-size:1.1rem;
+  #recording-indicator{
+    display:none;
+    align-items:center;
+    gap:8px;
+    padding:0 20px 6px;
+    font-size:0.82rem;
+    color:var(--red);
     flex-shrink:0;
-    display:flex; align-items:center; justify-content:center;
-    transition:background .15s, color .15s;
   }
-  #mic-btn:hover{ color:var(--amber); }
+  #recording-indicator.active{ display:flex; }
   #mic-btn.recording{
     background:var(--red);
     color:#fff;
@@ -488,46 +608,11 @@
     0%,100%{ box-shadow:0 0 0 0 rgba(239,68,68,0.45); }
     50%{ box-shadow:0 0 0 8px rgba(239,68,68,0); }
   }
-  #recording-indicator{
-    display:none;
-    align-items:center;
-    gap:8px;
-    padding:0 20px 6px;
-    font-size:0.82rem;
-    color:var(--red);
-  }
-  #recording-indicator.active{ display:flex; }
   #recording-indicator .rec-dot{
     width:8px; height:8px; border-radius:50%;
     background:var(--red);
     animation:mic-pulse 1.1s ease-in-out infinite;
   }
-
-  /* ---------------- Mobile header call button ---------------- */
-  #mobile-call-btn{
-    margin-left:auto;
-    background:var(--panel-2);
-    border:1px solid var(--line);
-    color:var(--teal);
-    width:38px; height:38px;
-    border-radius:50%;
-    font-size:1.05rem;
-    display:flex; align-items:center; justify-content:center;
-    flex-shrink:0;
-  }
-  #desktop-call-btn{
-    background:transparent;
-    border:1px solid var(--line);
-    color:var(--teal);
-    font-size:0.8rem;
-    padding:6px 12px;
-    border-radius:999px;
-    display:inline-flex;
-    align-items:center;
-    gap:6px;
-    margin-bottom:16px;
-  }
-  #desktop-call-btn:hover{ border-color:var(--teal); }
 
   /* ---------------- Call overlay ---------------- */
   #call-overlay{
@@ -563,132 +648,137 @@
   .call-accept{ background:var(--teal); color:#0a1a18; }
   .call-decline, .call-end{ background:var(--red); color:#fff; }
 
-  /* ---------------- Mobile header (menu toggle) ---------------- */
-  #mobile-header{
-    display:none;
-    align-items:center;
-    gap:12px;
-    padding:14px 16px;
-    border-bottom:1px solid var(--line);
-    background:var(--panel);
-  }
-  #menu-toggle{
-    background:var(--panel-2);
-    border:1px solid var(--line);
-    color:var(--text);
-    width:36px; height:36px;
-    border-radius:8px;
-    font-size:1.1rem;
-    display:flex; align-items:center; justify-content:center;
-    flex-shrink:0;
-  }
-  #mobile-header .room-title{ font-size:1rem; margin:0; }
-  #mobile-header .room-sub{ font-size:0.72rem; margin:0; color:var(--text-dim); }
-
-  #sidebar-backdrop{
-    display:none;
-    position:fixed; inset:0;
-    background:rgba(0,0,0,0.55);
-    z-index:39;
-  }
-  #sidebar-backdrop.active{ display:block; }
-
+  /* ---------------- Mobile layout ---------------- */
   @media (max-width: 720px){
     #app.active{ grid-template-columns: 1fr; }
-    #mobile-header{ display:flex; }
-    aside{
-      position:fixed;
-      top:0; left:0; bottom:0;
-      width:min(78vw, 300px);
-      transform:translateX(-100%);
-      transition:transform .22s ease;
-      z-index:40;
-      display:flex;
-    }
-    aside.open{ transform:translateX(0); }
-    .msg{ max-width:80%; }
+    #home-pane{ border-right:none; width:100%; }
+    main{ display:none; }
+    #app.chat-open #home-pane{ display:none; }
+    #app.chat-open main{ display:flex; width:100%; }
+    .msg{ max-width:82%; }
     #composer{ gap:6px; padding:8px 10px; }
     #composer input{ padding:11px 14px; }
-    #photo-btn, #file-btn, #mic-btn, #composer button[type="submit"]{ width:38px; height:38px; font-size:1rem; }
-    #mobile-header{ gap:8px; padding:12px 12px; }
+    #photo-btn, #file-btn, #mic-btn, #composer button[type="submit"]{ width:38px; height:38px; }
+  }
+  @media (min-width: 721px){
+    #back-to-list-btn{ display:none; }
   }
 </style>
 </head>
 <body>
 
-<!-- ===================== JOIN SCREEN ===================== -->
+<!-- ===================== JOIN / REGISTER SCREEN ===================== -->
 <div id="join-screen">
   <div class="join-card">
     <div class="eyebrow-mark"></div>
-    <h1>WhatsApp New</h1>
-    <p class="sub">Enter your mobile number once — next time, this device will skip straight to your chat. Room code is what links you to your family/friends.</p>
+    <h1>Solangi Chat</h1>
+    <p class="sub">Register once with your mobile number and name. After that, search anyone by their mobile number to message or call them directly — no room codes needed.</p>
     <div class="field">
       <label for="phone-input">Mobile number</label>
-      <input id="phone-input" type="tel" placeholder="e.g. 9876543210" autocomplete="off" />
-    </div>
-    <div class="field">
-      <label for="room-input">Room code</label>
-      <input id="room-input" type="text" placeholder="e.g. sharma-family" autocomplete="off" />
+      <input id="phone-input" type="tel" placeholder="e.g. 9876543210" autocomplete="off" inputmode="tel" />
     </div>
     <div class="field">
       <label for="name-input">Your name</label>
       <input id="name-input" type="text" placeholder="e.g. Aisha" autocomplete="off" />
     </div>
-    <button class="btn-primary" id="join-btn">Join room</button>
+    <button class="btn-primary" id="join-btn">Continue</button>
     <div id="join-error"></div>
   </div>
 </div>
 
 <!-- ===================== MAIN APP ===================== -->
 <div id="app">
-  <div id="sidebar-backdrop"></div>
-  <aside id="sidebar">
-    <h2 class="room-title" id="room-title-el">—</h2>
-    <p class="room-sub" id="room-count-el">0 online</p>
-    <button id="desktop-call-btn" type="button">📞 Call</button>
-    <div style="display:flex; gap:8px; margin-bottom:16px;">
-      <button id="search-toggle-desktop" class="icon-btn" type="button" title="Search messages">🔍</button>
-      <button id="theme-toggle-desktop" class="icon-btn" type="button" title="Toggle dark/light">🌙</button>
+  <!-- ----- Left pane: search + chats ----- -->
+  <div id="home-pane">
+    <div id="home-header">
+      <h2>Solangi Chat</h2>
+      <button id="theme-toggle-btn" class="row-call-btn" type="button" title="Toggle dark/light">🌙</button>
     </div>
-    <p class="section-label">Members</p>
-    <div id="member-list"></div>
-    <div class="me-tag">You're in as <b id="me-name-el">—</b><br><a href="#" id="switch-account-link" style="color:var(--text-dim); font-size:0.72rem;">Not you? Switch account</a></div>
-  </aside>
-  <main>
-    <div id="mobile-header">
-      <button id="menu-toggle" title="Members & calls">☰</button>
-      <div>
-        <p class="room-title" id="room-title-el-mobile">—</p>
-        <p class="room-sub" id="room-count-el-mobile">0 online</p>
+    <div id="search-wrap">
+      <div id="search-wrap-inner">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="phone-search-input" type="tel" inputmode="tel" placeholder="Search by mobile number…" autocomplete="off" />
+        <button id="search-clear-btn" type="button" title="Clear">✕</button>
       </div>
-      <button id="search-toggle-mobile" class="icon-btn" type="button" title="Search">🔍</button>
-      <button id="theme-toggle-mobile" class="icon-btn" type="button" title="Theme">🌙</button>
-      <button id="mobile-call-btn" type="button" title="Call">📞</button>
     </div>
-    <div id="pinned-bar"></div>
-    <div id="search-bar">
-      <input id="search-input" type="text" placeholder="Search messages…" autocomplete="off" />
-      <button type="button" id="search-close" class="icon-btn" title="Close search">✕</button>
+
+    <!-- Recent chats -->
+    <div id="chat-list-view">
+      <p class="section-label" style="padding:0 16px 6px; font-size:0.72rem; text-transform:uppercase; color:var(--text-dim); letter-spacing:.04em;">Chats</p>
+      <div id="list-scroll">
+        <div id="chat-list"></div>
+        <div id="empty-list-msg">No chats yet. Search for someone's mobile number above to start a conversation.</div>
+      </div>
     </div>
-    <div id="messages"></div>
-    <div id="typing-indicator"></div>
-    <div id="recording-indicator"><span class="rec-dot"></span><span id="recording-time">0:00</span> Recording… tap mic again to send</div>
-    <div id="dm-bar">
-      <span id="dm-lock">🔒</span>
-      <select id="dm-target">
-        <option value="">Message: Everyone</option>
-      </select>
+
+    <!-- Search results -->
+    <div id="search-results-view">
+      <p id="search-hint">Searching for numbers starting with what you type.</p>
+      <div id="search-list-scroll" style="flex:1; overflow-y:auto;">
+        <div id="search-results"></div>
+        <div id="empty-search-msg" style="display:none;">No one found with that number.</div>
+      </div>
     </div>
-    <form id="composer">
-      <input id="photo-input" type="file" accept="image/*" style="display:none" />
-      <button type="button" id="photo-btn" title="Send a photo">📷</button>
-      <input id="file-input" type="file" style="display:none" />
-      <button type="button" id="file-btn" title="Send a file">📎</button>
-      <button type="button" id="mic-btn" title="Record a voice message">🎤</button>
-      <input id="msg-input" type="text" placeholder="Type a message…" autocomplete="off" />
-      <button type="submit">Send</button>
-    </form>
-    <div id="photo-status"></div>
+
+    <div id="home-footer">
+      <span class="footer-text">You're in as <b id="me-name-el">—</b> · <span id="me-phone-el"></span></span>
+      <a href="#" id="switch-account-link" title="Switch account">Switch</a>
+    </div>
+  </div>
+
+  <!-- ----- Right pane: active chat ----- -->
+  <main>
+    <div id="chat-empty-state">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <div>Search a mobile number on the left to start chatting.</div>
+    </div>
+
+    <div id="chat-view">
+      <div id="chat-header">
+        <button id="back-to-list-btn" type="button" title="Back">
+          <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div class="peer-avatar" id="peer-avatar-el">—</div>
+        <div id="chat-header-info">
+          <div id="peer-name-el">—</div>
+          <div id="peer-status-el"></div>
+        </div>
+        <div id="header-actions">
+          <button id="chat-search-toggle" class="icon-btn" type="button" title="Search in chat">
+            <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+          <button id="call-header-btn" class="icon-btn" type="button" title="Call">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="pinned-bar"></div>
+      <div id="chat-search-bar">
+        <input id="search-input" type="text" placeholder="Search messages…" autocomplete="off" />
+        <button type="button" id="search-close" class="icon-btn" title="Close search">✕</button>
+      </div>
+      <div id="messages"></div>
+      <div id="typing-indicator"></div>
+      <div id="recording-indicator"><span class="rec-dot"></span><span id="recording-time">0:00</span> Recording… tap mic again to send</div>
+      <form id="composer">
+        <input id="photo-input" type="file" accept="image/*" style="display:none" />
+        <button type="button" id="photo-btn" title="Send a photo">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </button>
+        <input id="file-input" type="file" style="display:none" />
+        <button type="button" id="file-btn" title="Send a file">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <button type="button" id="mic-btn" title="Record a voice message">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
+        <input id="msg-input" type="text" placeholder="Type a message…" autocomplete="off" />
+        <button type="submit" title="Send">
+          <svg class="icon filled" viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+        </button>
+      </form>
+      <div id="photo-status"></div>
+    </div>
   </main>
 </div>
 
@@ -721,7 +811,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
-  onSnapshot, query, orderBy, limit, serverTimestamp, getDoc,
+  onSnapshot, query, where, orderBy, limit, serverTimestamp, getDoc, getDocs,
   arrayUnion, deleteField
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -730,32 +820,48 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const STUN_SERVERS = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    // Free public TURN relay (OpenRelay project) — used only as a fallback
+    // when a direct peer-to-peer connection can't be made (strict WiFi
+    // routers, symmetric NAT, etc). This is what fixes calls that get
+    // stuck on "Connecting…".
+    { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+  ]
 };
+const CALL_TIMEOUT_MS = 20000; // if we're not connected within 20s, give up with a clear message
 
 // -------------------------------------------------------------------------
 // State
 // -------------------------------------------------------------------------
 let uid = null;
 let myName = "";
-let roomCode = "";
+let myPhone = "";
+
+let currentChatId = null;   // the chat currently open in the right pane
+let peerUid = null, peerName = "", peerPhone = "";
+
 let unsubMessages = null;
 let unsubMembers = null;
 let unsubIncomingCalls = null;
+let unsubMyChats = null;
 let presenceInterval = null;
 
 let pc = null;              // active RTCPeerConnection
 let localStream = null;
 let activeCallId = null;
-let activeCallDoc = null;
 let unsubCallDoc = null;
 let unsubIceCandidates = null;
+let callConnectTimeout = null;
 
 let messagesLoaded = false;     // becomes true after the first messages snapshot (so we don't "ding" for old history)
 let typingTimeout = null;       // debounce handle for "stopped typing"
 let isTypingNow = false;
 let searchQuery = "";
 let openPopoverEl = null;       // currently-open message action popover, if any
+let phoneSearchDebounce = null;
 const QUICK_REACTIONS = ["👍","❤️","😂","😮","😢","🙏"];
 
 // -------------------------------------------------------------------------
@@ -764,10 +870,8 @@ const QUICK_REACTIONS = ["👍","❤️","😂","😮","😢","🙏"];
 function applyTheme(theme){
   document.documentElement.setAttribute("data-theme", theme === "light" ? "light" : "dark");
   const icon = theme === "light" ? "☀️" : "🌙";
-  const dBtn = document.getElementById("theme-toggle-desktop");
-  const mBtn = document.getElementById("theme-toggle-mobile");
-  if (dBtn) dBtn.textContent = icon;
-  if (mBtn) mBtn.textContent = icon;
+  const btn = document.getElementById("theme-toggle-btn");
+  if (btn) btn.textContent = icon;
 }
 function toggleTheme(){
   const current = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
@@ -776,11 +880,7 @@ function toggleTheme(){
   applyTheme(next);
 }
 applyTheme(localStorage.getItem("wn-theme") || "dark");
-document.getElementById("theme-toggle-desktop").addEventListener("click", toggleTheme);
-document.getElementById("theme-toggle-mobile").addEventListener("click", toggleTheme);
-document.getElementById("dm-target").addEventListener("change", (e) => {
-  document.getElementById("dm-bar").classList.toggle("active", !!e.target.value);
-});
+document.getElementById("theme-toggle-btn").addEventListener("click", toggleTheme);
 
 // -------------------------------------------------------------------------
 // Notification sound — short beep via WebAudio, no audio file needed
@@ -803,7 +903,7 @@ function playNotifySound(){
 }
 
 // -------------------------------------------------------------------------
-// Auth: anonymous sign-in, then wait for join form
+// Auth: anonymous sign-in, then wait for register form
 // -------------------------------------------------------------------------
 let autoJoinAttempted = false;
 onAuthStateChanged(auth, (user) => {
@@ -830,123 +930,363 @@ function normalizePhone(raw){
 }
 
 // -------------------------------------------------------------------------
-// Remember-me: if this device already joined before, skip the form entirely.
+// Remember-me: if this device already registered before, skip the form.
 // -------------------------------------------------------------------------
 async function attemptAutoJoin(){
   const phone = localStorage.getItem("wn-phone");
   const name = localStorage.getItem("wn-name");
-  const room = localStorage.getItem("wn-room");
-  if (!phone || !name || !room) return;
-  document.getElementById("phone-input").value = phone;
-  document.getElementById("name-input").value = name;
-  document.getElementById("room-input").value = room;
-  showJoinError("Welcome back — joining…");
-  await joinRoom();
+  if (!phone || !name) return;
+  myPhone = phone;
+  myName = name;
+  await setDoc(doc(db, "profiles", phone), { name, uid, phone, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+  enterApp();
 }
 
-// If someone recognizes their number on a new/cleared device, pull their
-// saved name + room code so they don't have to retype them.
+// If someone types a number that's already registered, let them know whose
+// it is instead of silently taking it over.
 document.getElementById("phone-input").addEventListener("blur", async () => {
   const phone = normalizePhone(document.getElementById("phone-input").value);
   if (!phone) return;
-  if (document.getElementById("name-input").value.trim() && document.getElementById("room-input").value.trim()) return;
   try {
     const snap = await getDoc(doc(db, "profiles", phone));
     if (snap.exists()){
       const data = snap.data();
-      document.getElementById("name-input").value = data.name || "";
-      document.getElementById("room-input").value = data.roomCode || "";
-      showJoinError("Welcome back, " + (data.name || "") + " — tap Join room to continue.");
+      if (!document.getElementById("name-input").value.trim()){
+        document.getElementById("name-input").value = data.name || "";
+      }
+      showJoinError("This number is already registered as \"" + (data.name || "") + "\". Tap Continue again if this is you.");
     }
   } catch (e) { /* profile lookup is best-effort only */ }
 });
 
+// Any edit to the phone number after a duplicate warning cancels that
+// warning, so we always re-check the number actually being submitted.
+let pendingConfirmPhone = null;
+document.getElementById("phone-input").addEventListener("input", () => {
+  pendingConfirmPhone = null;
+});
+
 // -------------------------------------------------------------------------
-// Join flow
+// Register flow
 // -------------------------------------------------------------------------
-document.getElementById("join-btn").addEventListener("click", joinRoom);
-document.getElementById("name-input").addEventListener("keydown", (e) => { if (e.key === "Enter") joinRoom(); });
-document.getElementById("room-input").addEventListener("keydown", (e) => { if (e.key === "Enter") joinRoom(); });
-document.getElementById("phone-input").addEventListener("keydown", (e) => { if (e.key === "Enter") joinRoom(); });
+document.getElementById("join-btn").addEventListener("click", registerAndEnter);
+document.getElementById("name-input").addEventListener("keydown", (e) => { if (e.key === "Enter") registerAndEnter(); });
+document.getElementById("phone-input").addEventListener("keydown", (e) => { if (e.key === "Enter") registerAndEnter(); });
 
 document.getElementById("switch-account-link").addEventListener("click", (e) => {
   e.preventDefault();
   if (!window.confirm("Switch to a different number/name on this device?")) return;
   localStorage.removeItem("wn-phone");
   localStorage.removeItem("wn-name");
-  localStorage.removeItem("wn-room");
   location.reload();
 });
 
-async function joinRoom(){
-  const room = document.getElementById("room-input").value.trim().toLowerCase().replace(/\s+/g, "-");
+async function registerAndEnter(){
   const name = document.getElementById("name-input").value.trim();
   const phone = normalizePhone(document.getElementById("phone-input").value);
-  if (!room || !name || !phone){
-    showJoinError("Please enter your mobile number, room code and name.");
+  if (!name || !phone){
+    showJoinError("Please enter your mobile number and name.");
     return;
   }
   if (!uid){
     showJoinError("Still connecting… try again in a second.");
     return;
   }
-  roomCode = room;
+
+  // Check whether this number is already registered to someone else before
+  // creating/overwriting the profile.
+  if (pendingConfirmPhone !== phone){
+    try {
+      const existingSnap = await getDoc(doc(db, "profiles", phone));
+      if (existingSnap.exists() && existingSnap.data().uid !== uid){
+        const existingName = existingSnap.data().name || "someone";
+        showJoinError("This number is already registered as \"" + existingName + "\". Tap Continue again to proceed as \"" + existingName + "\" on this device, or change the number to register as someone new.");
+        pendingConfirmPhone = phone;
+        return;
+      }
+    } catch (e) { /* if the lookup fails, fall through and let registration proceed */ }
+  }
+  pendingConfirmPhone = null;
+
   myName = name;
+  myPhone = phone;
 
-  document.getElementById("join-screen").style.display = "none";
-  document.getElementById("app").classList.add("active");
-  document.getElementById("room-title-el").textContent = roomCode;
-  document.getElementById("room-title-el-mobile").textContent = roomCode;
-  document.getElementById("me-name-el").textContent = myName;
-
-  // Register presence
-  await setDoc(doc(db, "rooms", roomCode, "members", uid), {
-    name: myName,
-    lastSeen: serverTimestamp()
-  });
-  presenceInterval = setInterval(() => {
-    setDoc(doc(db, "rooms", roomCode, "members", uid), {
-      name: myName,
-      lastSeen: serverTimestamp()
-    }, { merge: true });
-  }, 20000);
-  window.addEventListener("beforeunload", () => {
-    deleteDoc(doc(db, "rooms", roomCode, "members", uid)).catch(()=>{});
-  });
-
-  // Remember this phone → name/room, so this device (and any device where
-  // the same number is entered) can skip the form next time.
-  setDoc(doc(db, "profiles", phone), { name: myName, roomCode, updatedAt: serverTimestamp() }).catch(() => {});
+  await setDoc(doc(db, "profiles", phone), { name: myName, uid, phone, updatedAt: serverTimestamp() }, { merge: true });
   localStorage.setItem("wn-phone", phone);
   localStorage.setItem("wn-name", myName);
-  localStorage.setItem("wn-room", roomCode);
 
-  listenMembers();
-  listenMessages();
-  listenIncomingCalls();
+  enterApp();
+}
+
+function enterApp(){
+  document.getElementById("join-screen").style.display = "none";
+  document.getElementById("app").classList.add("active");
+  document.getElementById("me-name-el").textContent = myName;
+  document.getElementById("me-phone-el").textContent = myPhone;
+
+  listenMyChats();
+  listenGlobalIncomingCalls();
 }
 
 // -------------------------------------------------------------------------
-// Members / presence list
+// Chat list (recent conversations) — shown on the left, no room code needed
 // -------------------------------------------------------------------------
-function listenMembers(){
-  const q = collection(db, "rooms", roomCode, "members");
-  unsubMembers = onSnapshot(q, (snap) => {
-    const now = Date.now();
+function listenMyChats(){
+  const q = query(collection(db, "chats"), where("participants", "array-contains", uid));
+  unsubMyChats = onSnapshot(q, (snap) => {
     const list = [];
     snap.forEach((d) => {
+      const c = d.data();
+      const other = (c.participants || []).find((p) => p !== uid);
+      if (!other) return;
+      list.push({
+        chatId: d.id,
+        peerUid: other,
+        peerName: (c.names && c.names[other]) || "Unknown",
+        peerPhone: (c.participantPhones && c.participantPhones[other]) || "",
+        lastMessage: c.lastMessage || "",
+        lastAtMs: c.lastAt?.toMillis ? c.lastAt.toMillis() : 0
+      });
+    });
+    list.sort((a, b) => b.lastAtMs - a.lastAtMs);
+    renderChatList(list);
+  });
+}
+
+function relativeTime(ms){
+  if (!ms) return "";
+  const diffMin = Math.floor((Date.now() - ms) / 60000);
+  if (diffMin < 1) return "now";
+  if (diffMin < 60) return diffMin + "m";
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return diffHr + "h";
+  return Math.floor(diffHr / 24) + "d";
+}
+
+function renderChatList(list){
+  const el = document.getElementById("chat-list");
+  const emptyMsg = document.getElementById("empty-list-msg");
+  emptyMsg.style.display = list.length === 0 ? "block" : "none";
+  el.innerHTML = "";
+  list.forEach((c) => {
+    const row = document.createElement("div");
+    row.className = "list-row";
+    row.innerHTML = `
+      <div class="row-avatar">${escapeHtml((c.peerName || "?").charAt(0).toUpperCase())}</div>
+      <div class="row-body">
+        <div class="row-top">
+          <div class="row-name">${escapeHtml(c.peerName)}</div>
+          <div class="row-time">${relativeTime(c.lastAtMs)}</div>
+        </div>
+        <div class="row-sub">
+          <div class="row-preview">${escapeHtml(c.lastMessage || "Say hi 👋")}</div>
+        </div>
+      </div>
+    `;
+    row.addEventListener("click", () => openChat(c.peerUid, c.peerName, c.peerPhone));
+    el.appendChild(row);
+  });
+}
+
+// -------------------------------------------------------------------------
+// Search people by mobile number
+// -------------------------------------------------------------------------
+const phoneSearchInput = document.getElementById("phone-search-input");
+const searchClearBtn = document.getElementById("search-clear-btn");
+const chatListView = document.getElementById("chat-list-view");
+const searchResultsView = document.getElementById("search-results-view");
+
+phoneSearchInput.addEventListener("input", () => {
+  const val = phoneSearchInput.value.trim();
+  searchClearBtn.classList.toggle("show", !!val);
+  clearTimeout(phoneSearchDebounce);
+  if (!val){
+    showChatListPane();
+    return;
+  }
+  phoneSearchDebounce = setTimeout(() => runPhoneSearch(val), 300);
+});
+searchClearBtn.addEventListener("click", () => {
+  phoneSearchInput.value = "";
+  searchClearBtn.classList.remove("show");
+  showChatListPane();
+});
+
+function showChatListPane(){
+  chatListView.style.display = "flex";
+  searchResultsView.classList.remove("active");
+}
+function showSearchResultsPane(){
+  chatListView.style.display = "none";
+  searchResultsView.classList.add("active");
+}
+
+async function runPhoneSearch(raw){
+  const qstr = normalizePhone(raw);
+  if (!qstr){ showChatListPane(); return; }
+  showSearchResultsPane();
+  const resultsEl = document.getElementById("search-results");
+  const emptyEl = document.getElementById("empty-search-msg");
+  document.getElementById("search-hint").textContent = "Searching…";
+  try {
+    const q = query(
+      collection(db, "profiles"),
+      orderBy("phone"),
+      where("phone", ">=", qstr),
+      where("phone", "<=", qstr + "\uf8ff"),
+      limit(20)
+    );
+    const snap = await getDocs(q);
+    const rows = [];
+    snap.forEach((d) => {
+      const p = d.data();
+      if (p.phone === myPhone) return;
+      rows.push(p);
+    });
+    renderSearchResults(rows);
+    document.getElementById("search-hint").textContent = "Searching for numbers starting with what you type.";
+    emptyEl.style.display = rows.length === 0 ? "block" : "none";
+  } catch (e) {
+    resultsEl.innerHTML = "";
+    document.getElementById("search-hint").textContent = "Search failed — check your connection and try again.";
+  }
+}
+
+function renderSearchResults(rows){
+  const el = document.getElementById("search-results");
+  el.innerHTML = "";
+  rows.forEach((p) => {
+    const row = document.createElement("div");
+    row.className = "list-row";
+    row.innerHTML = `
+      <div class="row-avatar">${escapeHtml((p.name || "?").charAt(0).toUpperCase())}</div>
+      <div class="row-body">
+        <div class="row-top"><div class="row-name">${escapeHtml(p.name || "Unknown")}</div></div>
+        <div class="row-sub"><div class="row-preview">${escapeHtml(p.phone || "")}</div></div>
+      </div>
+      <button class="row-call-btn" type="button" title="Call ${escapeHtml(p.name || "")}">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      </button>
+    `;
+    row.addEventListener("click", () => {
+      phoneSearchInput.value = "";
+      searchClearBtn.classList.remove("show");
+      openChat(p.uid, p.name, p.phone);
+    });
+    row.querySelector(".row-call-btn").addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      startCall(p.uid, p.name);
+    });
+    el.appendChild(row);
+  });
+}
+
+// -------------------------------------------------------------------------
+// Opening / leaving a chat
+// -------------------------------------------------------------------------
+async function openChat(otherUid, otherName, otherPhone){
+  if (!otherUid || otherUid === uid) return;
+  if (currentChatId) leaveCurrentChat();
+
+  const chatId = [uid, otherUid].sort().join("__");
+  currentChatId = chatId;
+  peerUid = otherUid;
+  peerName = otherName || "Unknown";
+  peerPhone = otherPhone || "";
+
+  document.getElementById("peer-name-el").textContent = peerName;
+  document.getElementById("peer-avatar-el").textContent = (peerName || "?").charAt(0).toUpperCase();
+  document.getElementById("peer-status-el").textContent = "";
+
+  const names = {}; names[uid] = myName; names[otherUid] = peerName;
+  const phones = {}; phones[uid] = myPhone; phones[otherUid] = peerPhone;
+  setDoc(doc(db, "chats", chatId), {
+    participants: [uid, otherUid], names, participantPhones: phones
+  }, { merge: true }).catch(() => {});
+
+  setDoc(doc(db, "chats", chatId, "members", uid), {
+    name: myName, lastSeen: serverTimestamp()
+  }).catch(() => {});
+  presenceInterval = setInterval(() => {
+    setDoc(doc(db, "chats", chatId, "members", uid), {
+      name: myName, lastSeen: serverTimestamp()
+    }, { merge: true }).catch(() => {});
+  }, 20000);
+
+  document.getElementById("chat-empty-state").classList.add("hide");
+  document.getElementById("chat-view").classList.add("active");
+  document.getElementById("app").classList.add("chat-open");
+  document.getElementById("messages").innerHTML = "";
+  messagesLoaded = false;
+
+  listenMembers();
+  listenMessages();
+}
+
+function leaveCurrentChat(){
+  if (unsubMessages){ unsubMessages(); unsubMessages = null; }
+  if (unsubMembers){ unsubMembers(); unsubMembers = null; }
+  if (presenceInterval){ clearInterval(presenceInterval); presenceInterval = null; }
+  if (currentChatId && uid){
+    deleteDoc(doc(db, "chats", currentChatId, "members", uid)).catch(() => {});
+  }
+}
+
+function closeChatToHome(){
+  leaveCurrentChat();
+  currentChatId = null;
+  peerUid = null; peerName = ""; peerPhone = "";
+  document.getElementById("chat-view").classList.remove("active");
+  document.getElementById("chat-empty-state").classList.remove("hide");
+  document.getElementById("app").classList.remove("chat-open");
+  closeSearch();
+}
+document.getElementById("back-to-list-btn").addEventListener("click", closeChatToHome);
+
+window.addEventListener("beforeunload", () => {
+  if (currentChatId && uid){
+    deleteDoc(doc(db, "chats", currentChatId, "members", uid)).catch(() => {});
+  }
+});
+
+// -------------------------------------------------------------------------
+// Presence / typing status for the currently open chat's peer
+// -------------------------------------------------------------------------
+function listenMembers(){
+  const chatId = currentChatId;
+  const q = collection(db, "chats", chatId, "members");
+  unsubMembers = onSnapshot(q, (snap) => {
+    if (chatId !== currentChatId) return; // stale listener from a chat we've since left
+    const now = Date.now();
+    let peer = null;
+    snap.forEach((d) => {
+      if (d.id === uid) return;
       const data = d.data();
       const lastSeenMs = data.lastSeen?.toMillis ? data.lastSeen.toMillis() : now;
       const online = now - lastSeenMs < 45000;
       const typingMs = data.typingAt?.toMillis ? data.typingAt.toMillis() : 0;
       const typing = !!data.typing && (now - typingMs < 4000);
-      list.push({ id: d.id, name: data.name, online, lastSeenMs, typing });
+      peer = { online, lastSeenMs, typing };
     });
-    renderMembers(list);
+    renderPeerStatus(peer);
   });
 }
 
-let currentOtherMembers = []; // members currently online, excluding me — used by header call buttons
+function renderPeerStatus(peer){
+  const statusEl = document.getElementById("peer-status-el");
+  const typingEl = document.getElementById("typing-indicator");
+  if (!peer){ statusEl.textContent = ""; typingEl.textContent = ""; return; }
+  if (peer.typing){
+    statusEl.textContent = "typing…";
+    typingEl.textContent = peerName + " is typing…";
+  } else if (peer.online){
+    statusEl.textContent = "online";
+    typingEl.textContent = "";
+  } else {
+    statusEl.textContent = "last seen " + relativeLastSeen(peer.lastSeenMs);
+    typingEl.textContent = "";
+  }
+}
 
 function relativeLastSeen(ms){
   const diffMin = Math.floor((Date.now() - ms) / 60000);
@@ -957,94 +1297,28 @@ function relativeLastSeen(ms){
   return Math.floor(diffHr / 24) + "d ago";
 }
 
-function renderMembers(list){
-  const el = document.getElementById("member-list");
-  const onlineCount = list.filter((m) => m.online).length;
-  document.getElementById("room-count-el").textContent = onlineCount + " online";
-  document.getElementById("room-count-el-mobile").textContent = onlineCount + " online";
-  currentOtherMembers = list.filter((m) => m.id !== uid && m.online);
-
-  // sort: online first, then by name
-  const sorted = [...list].sort((a, b) => (b.online - a.online) || a.name.localeCompare(b.name));
-
-  el.innerHTML = "";
-  sorted.forEach((m) => {
-    const row = document.createElement("div");
-    row.className = "member";
-    const isMe = m.id === uid;
-    row.innerHTML = `
-      <div class="dot${m.online ? "" : " offline"}"></div>
-      <div class="name">${escapeHtml(m.name)}${isMe ? " (you)" : ""}${!m.online ? `<span class="last-seen">last seen ${relativeLastSeen(m.lastSeenMs)}</span>` : ""}</div>
-      ${!isMe && m.online ? `<button class="call-btn" data-uid="${m.id}" data-name="${escapeHtml(m.name)}">Call</button>` : ""}
-    `;
-    el.appendChild(row);
-  });
-  el.querySelectorAll(".call-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      closeSidebar();
-      startCall(btn.dataset.uid, btn.dataset.name);
-    });
-  });
-
-  const typingNames = list.filter((m) => m.id !== uid && m.typing).map((m) => m.name);
-  const typingEl = document.getElementById("typing-indicator");
-  if (typingNames.length === 0){
-    typingEl.textContent = "";
-  } else if (typingNames.length === 1){
-    typingEl.textContent = typingNames[0] + " is typing…";
-  } else {
-    typingEl.textContent = typingNames.join(", ") + " are typing…";
-  }
-
-  updateDmTargetOptions(list);
-}
-
-function updateDmTargetOptions(list){
-  const select = document.getElementById("dm-target");
-  const others = list.filter((m) => m.id !== uid).sort((a, b) => a.name.localeCompare(b.name));
-  const previousValue = select.value;
-  select.innerHTML = `<option value="">Message: Everyone</option>` +
-    others.map((m) => `<option value="${m.id}">Message: ${escapeHtml(m.name)}${m.online ? "" : " (offline)"}</option>`).join("");
-  if (others.some((m) => m.id === previousValue)) select.value = previousValue;
-  document.getElementById("dm-bar").classList.toggle("active", !!select.value);
-}
-
 // -------------------------------------------------------------------------
-// Mobile members/call drawer
-// -------------------------------------------------------------------------
-function openSidebar(){
-  document.getElementById("sidebar").classList.add("open");
-  document.getElementById("sidebar-backdrop").classList.add("active");
-}
-function closeSidebar(){
-  document.getElementById("sidebar").classList.remove("open");
-  document.getElementById("sidebar-backdrop").classList.remove("active");
-}
-document.getElementById("menu-toggle").addEventListener("click", openSidebar);
-document.getElementById("sidebar-backdrop").addEventListener("click", closeSidebar);
-
-// -------------------------------------------------------------------------
-// Header call buttons — like WhatsApp's call icon: call the other person
-// directly if there's exactly one, otherwise open the member list to pick.
+// Header call button — calls the peer of the currently open chat
 // -------------------------------------------------------------------------
 function handleHeaderCallClick(){
-  if (activeCallId) return;
-  if (currentOtherMembers.length === 0){
-    showTransientNotice("No one else is online to call yet.");
-  } else if (currentOtherMembers.length === 1){
-    const m = currentOtherMembers[0];
-    startCall(m.id, m.name);
-  } else {
-    openSidebar();
-  }
+  if (activeCallId || !peerUid) return;
+  startCall(peerUid, peerName);
 }
-document.getElementById("mobile-call-btn").addEventListener("click", handleHeaderCallClick);
-document.getElementById("desktop-call-btn").addEventListener("click", handleHeaderCallClick);
+document.getElementById("call-header-btn").addEventListener("click", handleHeaderCallClick);
 
 function showTransientNotice(msg){
   const el = document.getElementById("photo-status");
   el.textContent = msg;
   setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 3000);
+}
+
+// Records the last message preview + time on the parent chat doc, so it
+// shows up correctly in everyone's chat list.
+function touchChatMeta(preview){
+  if (!currentChatId) return;
+  setDoc(doc(db, "chats", currentChatId), {
+    lastMessage: (preview || "").slice(0, 80), lastAt: serverTimestamp(), lastSenderUid: uid
+  }, { merge: true }).catch(() => {});
 }
 
 // -------------------------------------------------------------------------
@@ -1054,15 +1328,17 @@ const TICK_SVG = `<svg viewBox="0 0 16 11"><path d="M1 5.5 L5 9.5 L11 1.5" fill=
 const TICK_SVG_DOUBLE = `<svg viewBox="0 0 20 11"><path d="M1 5.5 L5 9.5 L11 1.5" fill="none" stroke-width="1.6" stroke="currentColor"/><path d="M6 5.5 L10 9.5 L19 1" fill="none" stroke-width="1.6" stroke="currentColor"/></svg>`;
 
 function listenMessages(){
-  const q = query(collection(db, "rooms", roomCode, "messages"), orderBy("createdAt", "asc"), limit(200));
+  const chatId = currentChatId;
+  const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"), limit(200));
   unsubMessages = onSnapshot(q, (snap) => {
+    if (chatId !== currentChatId) return; // stale listener from a chat we've since left
+
     // Notification sound for genuinely new incoming messages (skip the initial history load & my own sends)
     if (messagesLoaded){
       snap.docChanges().forEach((change) => {
         if (change.type === "added"){
           const m = change.doc.data();
-          const visible = !m.toUid || m.toUid === uid || m.uid === uid;
-          if (m.uid !== uid && visible) playNotifySound();
+          if (m.uid !== uid) playNotifySound();
         }
       });
     }
@@ -1074,25 +1350,15 @@ function listenMessages(){
 
     snap.forEach((d) => {
       const m = d.data();
-      const isVisible = !m.toUid || m.toUid === uid || m.uid === uid;
-      if (!isVisible) return; // a private DM between two other people — not mine to see
-
       const mine = m.uid === uid;
       const div = document.createElement("div");
       div.className = "msg" + (mine ? " mine" : "");
       div.id = "msg-" + d.id;
       const time = m.createdAt?.toDate ? m.createdAt.toDate().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : "";
 
-      let privateTag = "";
-      if (m.toUid){
-        privateTag = mine
-          ? `<span class="private-tag">🔒 to ${escapeHtml(m.toName || "")}</span>`
-          : `<span class="private-tag">🔒 private</span>`;
-      }
-
       if (m.pinned) pinned.push({ id: d.id, name: m.name, text: m.deleted ? "Deleted message" : (m.text || (m.type === "image" ? "📷 Photo" : m.type === "audio" ? "🎤 Voice message" : m.type === "file" ? "📎 " + (m.fileName || "File") : "")) });
 
-      // Mark messages from others as seen-by-me (skip if already marked)
+      // Mark messages from the other person as seen-by-me (skip if already marked)
       if (!mine && !m.deleted && !(m.seenBy || []).includes(uid)){
         seenUpdates.push(d.id);
       }
@@ -1105,7 +1371,7 @@ function listenMessages(){
       } else if (m.type === "audio"){
         bubbleHtml = `<div class="bubble audio-bubble"><audio controls preload="none" src="${m.audioData}"></audio></div>`;
       } else if (m.type === "file"){
-        bubbleHtml = `<a class="bubble file-bubble" href="${m.fileData}" download="${escapeHtml(m.fileName || "file")}"><span class="file-icon">📄</span><span class="file-meta"><span class="file-name">${escapeHtml(m.fileName || "File")}</span><span class="file-size">${formatFileSize(m.fileSize || 0)}</span></span></a>`;
+        bubbleHtml = `<a class="bubble file-bubble" href="${m.fileData}" download="${escapeHtml(m.fileName || "file")}"><span class="file-icon"><svg class="icon" viewBox="0 0 24 24" style="width:22px;height:22px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="file-meta"><span class="file-name">${escapeHtml(m.fileName || "File")}</span><span class="file-size">${formatFileSize(m.fileSize || 0)}</span></span></a>`;
       } else {
         bubbleHtml = `<div class="bubble">${escapeHtml(m.text)}${m.edited ? `<span class="edited-tag">(edited)</span>` : ""}</div>`;
       }
@@ -1132,8 +1398,7 @@ function listenMessages(){
       div.innerHTML = `
         <div class="who">
           ${!mine ? escapeHtml(m.name || "Someone") + (m.pinned ? " 📌" : "") : (m.pinned ? "📌 " : "")}
-          ${privateTag}
-          ${!m.deleted ? `<button class="msg-menu-btn" data-msgid="${d.id}">⋮</button>` : ""}
+          ${!m.deleted ? `<button class="msg-menu-btn" data-msgid="${d.id}"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>` : ""}
         </div>
         ${bubbleHtml}
         <div class="time">${time}${ticksHtml}</div>
@@ -1148,7 +1413,7 @@ function listenMessages(){
     applySearchFilter();
 
     seenUpdates.forEach((msgId) => {
-      updateDoc(doc(db, "rooms", roomCode, "messages", msgId), { seenBy: arrayUnion(uid) }).catch(() => {});
+      updateDoc(doc(db, "chats", chatId, "messages", msgId), { seenBy: arrayUnion(uid) }).catch(() => {});
     });
 
     el.querySelectorAll(".msg-menu-btn").forEach((btn) => {
@@ -1168,32 +1433,25 @@ function formatFileSize(bytes){
 
 document.getElementById("composer").addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (!currentChatId) return;
   const input = document.getElementById("msg-input");
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
   setTypingState(false);
-  await addDoc(collection(db, "rooms", roomCode, "messages"), {
-    uid, name: myName, text, createdAt: serverTimestamp(), ...dmFields()
+  await addDoc(collection(db, "chats", currentChatId, "messages"), {
+    uid, name: myName, text, createdAt: serverTimestamp()
   });
+  touchChatMeta(text);
 });
-
-// Returns { toUid, toName } when a specific member is selected in the
-// "Message: …" dropdown, or {} for a normal group message.
-function dmFields(){
-  const select = document.getElementById("dm-target");
-  if (!select.value) return {};
-  const label = select.options[select.selectedIndex].textContent.replace(/^Message: /, "").replace(/ \(offline\)$/, "");
-  return { toUid: select.value, toName: label };
-}
 
 // -------------------------------------------------------------------------
 // Typing indicator — writes a lightweight "typing" flag onto my member doc
 // -------------------------------------------------------------------------
 function setTypingState(typing){
-  if (!roomCode) return;
+  if (!currentChatId) return;
   isTypingNow = typing;
-  setDoc(doc(db, "rooms", roomCode, "members", uid), {
+  setDoc(doc(db, "chats", currentChatId, "members", uid), {
     name: myName, lastSeen: serverTimestamp(),
     typing, typingAt: serverTimestamp()
   }, { merge: true }).catch(() => {});
@@ -1227,7 +1485,7 @@ function renderPinnedBar(pinned){
 }
 
 // -------------------------------------------------------------------------
-// Search
+// Search inside the open chat
 // -------------------------------------------------------------------------
 function applySearchFilter(){
   const q = searchQuery.trim().toLowerCase();
@@ -1238,17 +1496,16 @@ function applySearchFilter(){
   });
 }
 function openSearch(){
-  document.getElementById("search-bar").classList.add("active");
+  document.getElementById("chat-search-bar").classList.add("active");
   document.getElementById("search-input").focus();
 }
 function closeSearch(){
-  document.getElementById("search-bar").classList.remove("active");
+  document.getElementById("chat-search-bar").classList.remove("active");
   document.getElementById("search-input").value = "";
   searchQuery = "";
   applySearchFilter();
 }
-document.getElementById("search-toggle-desktop").addEventListener("click", openSearch);
-document.getElementById("search-toggle-mobile").addEventListener("click", () => { closeSidebar(); openSearch(); });
+document.getElementById("chat-search-toggle").addEventListener("click", openSearch);
 document.getElementById("search-close").addEventListener("click", closeSearch);
 document.getElementById("search-input").addEventListener("input", (e) => {
   searchQuery = e.target.value;
@@ -1266,7 +1523,8 @@ function closePopover(){
 
 async function openMessagePopover(ev, msgId){
   closePopover();
-  const msgRef = doc(db, "rooms", roomCode, "messages", msgId);
+  if (!currentChatId) return;
+  const msgRef = doc(db, "chats", currentChatId, "messages", msgId);
   const snap = await getDoc(msgRef);
   if (!snap.exists()) return;
   const m = snap.data();
@@ -1279,7 +1537,7 @@ async function openMessagePopover(ev, msgId){
 
   const pop = document.createElement("div");
   pop.className = "msg-popover";
-  const rect = ev.target.getBoundingClientRect();
+  const rect = ev.target.closest("button").getBoundingClientRect();
   let top = rect.bottom + 6;
   let left = Math.min(rect.left, window.innerWidth - 190);
   pop.style.top = top + "px";
@@ -1321,7 +1579,8 @@ async function openMessagePopover(ev, msgId){
 }
 
 async function toggleReaction(msgId, emoji){
-  const msgRef = doc(db, "rooms", roomCode, "messages", msgId);
+  if (!currentChatId) return;
+  const msgRef = doc(db, "chats", currentChatId, "messages", msgId);
   const snap = await getDoc(msgRef);
   if (!snap.exists()) return;
   const reactions = snap.data().reactions || {};
@@ -1333,18 +1592,20 @@ async function toggleReaction(msgId, emoji){
 }
 
 function editMessage(msgId, currentText){
+  if (!currentChatId) return;
   const next = window.prompt("Edit message:", currentText || "");
   if (next === null) return;
   const trimmed = next.trim();
   if (!trimmed || trimmed === currentText) return;
-  updateDoc(doc(db, "rooms", roomCode, "messages", msgId), {
+  updateDoc(doc(db, "chats", currentChatId, "messages", msgId), {
     text: trimmed, edited: true, editedAt: serverTimestamp()
   }).catch(() => {});
 }
 
 function deleteMessage(msgId){
+  if (!currentChatId) return;
   if (!window.confirm("Delete this message for everyone?")) return;
-  updateDoc(doc(db, "rooms", roomCode, "messages", msgId), {
+  updateDoc(doc(db, "chats", currentChatId, "messages", msgId), {
     deleted: true, text: "", imageData: deleteField(), audioData: deleteField(), fileData: deleteField()
   }).catch(() => {});
 }
@@ -1364,15 +1625,16 @@ photoBtn.addEventListener("click", () => photoInput.click());
 photoInput.addEventListener("change", async () => {
   const file = photoInput.files[0];
   photoInput.value = "";
-  if (!file) return;
+  if (!file || !currentChatId) return;
 
   photoStatus.textContent = "Preparing photo…";
   try {
     const dataUrl = await compressImage(file);
     photoStatus.textContent = "Sending photo…";
-    await addDoc(collection(db, "rooms", roomCode, "messages"), {
-      uid, name: myName, type: "image", imageData: dataUrl, createdAt: serverTimestamp(), ...dmFields()
+    await addDoc(collection(db, "chats", currentChatId, "messages"), {
+      uid, name: myName, type: "image", imageData: dataUrl, createdAt: serverTimestamp()
     });
+    touchChatMeta("📷 Photo");
     photoStatus.textContent = "";
   } catch (e) {
     photoStatus.textContent = e.message || "Couldn't send that photo — try a smaller image.";
@@ -1427,7 +1689,7 @@ fileBtn.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files[0];
   fileInput.value = "";
-  if (!file) return;
+  if (!file || !currentChatId) return;
 
   if (file.size > MAX_FILE_BYTES){
     photoStatus.textContent = "That file is too big — keep it under ~175 KB.";
@@ -1438,11 +1700,12 @@ fileInput.addEventListener("change", async () => {
   photoStatus.textContent = "Sending file…";
   try {
     const dataUrl = await blobToDataUrl(file);
-    await addDoc(collection(db, "rooms", roomCode, "messages"), {
+    await addDoc(collection(db, "chats", currentChatId, "messages"), {
       uid, name: myName, type: "file",
       fileData: dataUrl, fileName: file.name, fileSize: file.size,
-      createdAt: serverTimestamp(), ...dmFields()
+      createdAt: serverTimestamp()
     });
+    touchChatMeta("📎 " + file.name);
     photoStatus.textContent = "";
   } catch (e) {
     photoStatus.textContent = "Couldn't send that file.";
@@ -1468,6 +1731,7 @@ let recordingStartTime = 0;
 let recordingTimerInterval = null;
 
 micBtn.addEventListener("click", async () => {
+  if (!currentChatId) return;
   if (mediaRecorder && mediaRecorder.state === "recording"){
     mediaRecorder.stop(); // onstop handler below sends the message
     return;
@@ -1490,6 +1754,7 @@ micBtn.addEventListener("click", async () => {
     if (e.data && e.data.size > 0) recordedChunks.push(e.data);
   };
 
+  const chatIdAtRecordTime = currentChatId;
   mediaRecorder.onstop = async () => {
     clearInterval(recordingTimerInterval);
     recordingIndicator.classList.remove("active");
@@ -1510,9 +1775,10 @@ micBtn.addEventListener("click", async () => {
         setTimeout(() => { photoStatus.textContent = ""; }, 4000);
         return;
       }
-      await addDoc(collection(db, "rooms", roomCode, "messages"), {
-        uid, name: myName, type: "audio", audioData: dataUrl, createdAt: serverTimestamp(), ...dmFields()
+      await addDoc(collection(db, "chats", chatIdAtRecordTime, "messages"), {
+        uid, name: myName, type: "audio", audioData: dataUrl, createdAt: serverTimestamp()
       });
+      if (chatIdAtRecordTime === currentChatId) touchChatMeta("🎤 Voice message");
       photoStatus.textContent = "";
     } catch (e) {
       photoStatus.textContent = "Couldn't send that voice message.";
@@ -1570,13 +1836,18 @@ function escapeHtml(s){
 
 // -------------------------------------------------------------------------
 // Voice calls (WebRTC, 1-to-1, signaled through Firestore)
+//
+// Calls are global (top-level "calls" collection), NOT scoped to whichever
+// chat happens to be open. That's what lets you call someone straight from
+// a search result or your chat list — they'll get the ringing call
+// wherever they are in the app, without needing that chat open first.
 // -------------------------------------------------------------------------
-function listenIncomingCalls(){
-  const q = collection(db, "rooms", roomCode, "calls");
+function listenGlobalIncomingCalls(){
+  const q = query(collection(db, "calls"), where("calleeUid", "==", uid));
   unsubIncomingCalls = onSnapshot(q, (snap) => {
     snap.docChanges().forEach((change) => {
       const call = change.doc.data();
-      if (change.type === "added" && call.calleeUid === uid && call.status === "ringing" && !activeCallId){
+      if (change.type === "added" && call.status === "ringing" && !activeCallId){
         showIncomingCall(change.doc.id, call);
       }
     });
@@ -1584,8 +1855,8 @@ function listenIncomingCalls(){
 }
 
 async function startCall(calleeUid, calleeName){
-  if (activeCallId) return;
-  const callDoc = await addDoc(collection(db, "rooms", roomCode, "calls"), {
+  if (activeCallId || !calleeUid || calleeUid === uid) return;
+  const callDoc = await addDoc(collection(db, "calls"), {
     callerUid: uid, callerName: myName,
     calleeUid, calleeName,
     status: "ringing", createdAt: serverTimestamp()
@@ -1596,24 +1867,27 @@ async function startCall(calleeUid, calleeName){
   ]);
 
   pc = new RTCPeerConnection(STUN_SERVERS);
-  await attachLocalAudio();
+  wireConnectionMonitoring();
+  try {
+    await attachLocalAudio();
+  } catch (e) { return; }
   wireRemoteAudio();
   wireIceCandidates(callDoc.id, "callerCandidates");
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  await updateDoc(doc(db, "rooms", roomCode, "calls", callDoc.id), {
+  await updateDoc(doc(db, "calls", callDoc.id), {
     offer: { type: offer.type, sdp: offer.sdp }
   });
 
-  unsubCallDoc = onSnapshot(doc(db, "rooms", roomCode, "calls", callDoc.id), async (d) => {
+  unsubCallDoc = onSnapshot(doc(db, "calls", callDoc.id), async (d) => {
     const data = d.data();
     if (!data) return;
     if (data.status === "declined"){ cleanupCall("Call declined"); return; }
     if (data.status === "ended"){ cleanupCall("Call ended"); return; }
     if (data.answer && pc && !pc.currentRemoteDescription){
       await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-      document.getElementById("call-status").textContent = "Connected";
+      document.getElementById("call-status").textContent = "Connecting…";
     }
   });
   listenRemoteCandidates(callDoc.id, "calleeCandidates");
@@ -1630,18 +1904,20 @@ function showIncomingCall(callId, call){
 async function acceptCall(callId, call){
   document.getElementById("call-status").textContent = "Connecting…";
   pc = new RTCPeerConnection(STUN_SERVERS);
-  await attachLocalAudio();
+  wireConnectionMonitoring();
+  try {
+    await attachLocalAudio();
+  } catch (e) { return; }
   wireRemoteAudio();
   wireIceCandidates(callId, "calleeCandidates");
 
   await pc.setRemoteDescription(new RTCSessionDescription(call.offer));
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
-  await updateDoc(doc(db, "rooms", roomCode, "calls", callId), {
+  await updateDoc(doc(db, "calls", callId), {
     answer: { type: answer.type, sdp: answer.sdp },
     status: "connected"
   });
-  document.getElementById("call-status").textContent = "Connected";
   document.getElementById("call-actions").innerHTML = "";
   const endBtn = document.createElement("button");
   endBtn.className = "call-end"; endBtn.textContent = "End";
@@ -1650,26 +1926,56 @@ async function acceptCall(callId, call){
 
   listenRemoteCandidates(callId, "callerCandidates");
 
-  unsubCallDoc = onSnapshot(doc(db, "rooms", roomCode, "calls", callId), (d) => {
+  unsubCallDoc = onSnapshot(doc(db, "calls", callId), (d) => {
     const data = d.data();
     if (data && data.status === "ended") cleanupCall("Call ended");
   });
 }
 
 async function declineCall(callId){
-  await updateDoc(doc(db, "rooms", roomCode, "calls", callId), { status: "declined" });
+  await updateDoc(doc(db, "calls", callId), { status: "declined" });
   cleanupCall("Call declined");
 }
 
 async function endCall(reason){
   if (activeCallId){
-    updateDoc(doc(db, "rooms", roomCode, "calls", activeCallId), { status: "ended" }).catch(()=>{});
+    updateDoc(doc(db, "calls", activeCallId), { status: "ended" }).catch(()=>{});
   }
   cleanupCall(reason === "cancelled" ? "Call cancelled" : "Call ended");
 }
 
+// Watches the actual peer connection (not just signaling) so the overlay
+// shows what's really happening, and gives up with a clear message instead
+// of hanging forever on "Connecting…".
+function wireConnectionMonitoring(){
+  if (!pc) return;
+  clearTimeout(callConnectTimeout);
+  callConnectTimeout = setTimeout(() => {
+    if (pc && pc.iceConnectionState !== "connected" && pc.iceConnectionState !== "completed"){
+      cleanupCall();
+      showTransientNotice("Couldn't connect the call — check that both of you have a working internet connection and try again.");
+    }
+  }, CALL_TIMEOUT_MS);
+
+  pc.oniceconnectionstatechange = () => {
+    if (!pc) return;
+    const state = pc.iceConnectionState;
+    const statusEl = document.getElementById("call-status");
+    if (state === "connected" || state === "completed"){
+      clearTimeout(callConnectTimeout);
+      if (statusEl) statusEl.textContent = "Connected";
+    } else if (state === "failed"){
+      cleanupCall();
+      showTransientNotice("Call connection failed — try switching WiFi/mobile data, or try again.");
+    } else if (state === "disconnected"){
+      if (statusEl) statusEl.textContent = "Reconnecting…";
+    }
+  };
+}
+
 function cleanupCall(){
-  if (pc){ pc.close(); pc = null; }
+  clearTimeout(callConnectTimeout);
+  if (pc){ pc.oniceconnectionstatechange = null; pc.close(); pc = null; }
   if (localStream){ localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   if (unsubCallDoc){ unsubCallDoc(); unsubCallDoc = null; }
   if (unsubIceCandidates){ unsubIceCandidates(); unsubIceCandidates = null; }
@@ -1682,6 +1988,7 @@ async function attachLocalAudio(){
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e){
     document.getElementById("call-status").textContent = "Microphone permission denied";
+    cleanupCall();
     throw e;
   }
   localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
@@ -1699,13 +2006,13 @@ function wireRemoteAudio(){
 function wireIceCandidates(callId, subcollectionName){
   pc.onicecandidate = (event) => {
     if (event.candidate){
-      addDoc(collection(db, "rooms", roomCode, "calls", callId, subcollectionName), event.candidate.toJSON());
+      addDoc(collection(db, "calls", callId, subcollectionName), event.candidate.toJSON());
     }
   };
 }
 
 function listenRemoteCandidates(callId, subcollectionName){
-  unsubIceCandidates = onSnapshot(collection(db, "rooms", roomCode, "calls", callId, subcollectionName), (snap) => {
+  unsubIceCandidates = onSnapshot(collection(db, "calls", callId, subcollectionName), (snap) => {
     snap.docChanges().forEach((change) => {
       if (change.type === "added" && pc){
         pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(()=>{});
