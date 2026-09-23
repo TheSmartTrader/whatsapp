@@ -2,13 +2,31 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Admin check: true agar current user ki UID 'admins' collection mein document ID ke tor par maujood hai.
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
     // Any signed-in user can see the users directory (needed to start chats,
     // show DP/online status), but can only create/edit their own profile document.
     match /users/{userId} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null && request.auth.uid == userId;
-      // User apna hi profile document delete kar sakta hai (account delete feature).
-      allow delete: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+
+      // User apna profile khud edit kar sakta hai, ya admin kisi ka bhi (suspend ke liye).
+      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin());
+
+      // User apna hi profile document delete kar sakta hai (account delete feature),
+      // ya admin kisi bhi user ko delete kar sakta hai (admin panel feature).
+      allow delete: if request.auth != null && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Admins collection: sirf Firebase Console se manage hoti hai, koi bhi client
+    // ise seedha padh/likh nahi sakta. (isAdmin() function ka exists() check
+    // rules-evaluation ke andar hi chalta hai, is 'deny' se affect nahi hota.)
+    match /admins/{adminId} {
+      allow read, write: if false;
     }
 
     // Jab koi user account delete karta hai, uski wajah (reason) yahan save hoti hai.
@@ -31,6 +49,7 @@ service cloud.firestore {
         allow create: if request.auth != null
           && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members
           && request.resource.data.senderId == request.auth.uid;
+
         // Sirf "status" field update karne ki ijazat hai (double-tick / seen ke liye),
         // taake message ka text/sender koi badal na sake.
         allow update: if request.auth != null
