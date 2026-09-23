@@ -116,10 +116,26 @@ function friendlyError(e){
 onAuthStateChanged(auth, async (user)=>{
   if(user){
     const snap = await getDoc(doc(db, 'users', user.uid));
-    const data = snap.exists() ? snap.data() : { name: user.email, email: user.email, photo: null };
+
+    if(!snap.exists()){
+      // Admin ne profile delete kar diya ho sakta hai — login block karein.
+      await signOut(auth);
+      alert('Ye account ab available nahi hai.');
+      return;
+    }
+    const data = snap.data();
+    if(data.suspended){
+      await signOut(auth);
+      alert('Aapka account admin ne suspend kar diya hai.');
+      return;
+    }
+
     currentUser = { uid: user.uid, name: data.name, email: data.email, photo: data.photo || null };
+    currentUser.isAdmin = await checkIsAdmin(user.uid);
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
+    const adminBtn = document.getElementById('admin-btn');
+    if(adminBtn) adminBtn.style.display = currentUser.isAdmin ? '' : 'none';
     listenUsers();
     listenMyChats();
     listenIncomingCalls();
@@ -489,6 +505,77 @@ async function onProfilePhotoSelected(e){
   e.target.value = '';
 }
 
+/* ================= ADMIN (master key) ================= */
+// Kisi ko admin banane ke liye Firebase Console > Firestore mein "admins"
+// collection banayein aur us user ke UID ka ek (khaali) document add kar dein.
+async function checkIsAdmin(uid){
+  try{
+    const snap = await getDoc(doc(db, 'admins', uid));
+    return snap.exists();
+  }catch(e){
+    return false;
+  }
+}
+
+function openAdminModal(){
+  renderAdminList();
+  document.getElementById('admin-modal').classList.add('show');
+}
+
+function renderAdminList(){
+  const box = document.getElementById('admin-list-body');
+  if(!box) return;
+  const others = allUsers.filter(u => u.uid !== currentUser.uid);
+  box.innerHTML = '';
+  if(others.length === 0){
+    box.innerHTML = '<div style="padding:16px 18px;color:#667781;font-size:13.5px;">Koi aur user nahi mila.</div>';
+    return;
+  }
+  others.forEach(u=>{
+    const suspended = !!u.suspended;
+    const row = document.createElement('div');
+    row.className = 'contact-pick';
+    row.style.cursor = 'default';
+    row.style.justifyContent = 'space-between';
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+        <div class="avatar" style="width:38px;height:38px;font-size:13px;">${avatarInner(u.name,u.photo)}</div>
+        <div style="min-width:0;">
+          <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(u.name)}</div>
+          <div style="font-size:12px;color:#667781;">${escapeHtml(u.email||'')}${suspended ? ' • <span style="color:#D9534F;font-weight:700;">Suspended</span>' : ''}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button class="btn-secondary" style="padding:6px 10px;font-size:12px;" onclick="TST.toggleSuspendUser('${u.uid}', ${!suspended})">${suspended ? 'Unsuspend' : 'Suspend'}</button>
+        <button class="btn-danger" style="padding:6px 10px;font-size:12px;" onclick="TST.adminDeleteUser('${u.uid}', ${JSON.stringify(u.name)})">Delete</button>
+      </div>`;
+    box.appendChild(row);
+  });
+}
+
+async function toggleSuspendUser(uid, suspend){
+  try{
+    await updateDoc(doc(db, 'users', uid), { suspended: !!suspend });
+    renderAdminList();
+  }catch(e){
+    alert('Masla hua: ' + (e.message || e));
+  }
+}
+
+async function adminDeleteUser(uid, name){
+  if(!confirm(`"${name}" ka account delete karna hai?\n\nYe unka profile hata dega aur login turant block kar dega.`)) return;
+  try{
+    // Pehle suspend flag lagayein taake agar user abhi bhi signed-in hai to
+    // agli action par turant block ho jaaye, phir profile document delete karein.
+    await updateDoc(doc(db, 'users', uid), { suspended: true });
+    await deleteDoc(doc(db, 'users', uid));
+    renderAdminList();
+    alert('User ka profile delete ho gaya aur login block kar diya gaya hai.\n\nNote: Unka Firebase Authentication record (email/password) hatane ke liye Firebase Console > Authentication mein jaake is user ko manually remove karna hoga — client app se doosre ka Auth account delete nahi ho sakta.');
+  }catch(e){
+    alert('Masla hua: ' + (e.message || e));
+  }
+}
+
 /* ================= DELETE ACCOUNT ================= */
 function openDeleteAccountModal(){
   document.getElementById('delete-reason').value = '';
@@ -769,5 +856,6 @@ window.TST = {
   openNewChatModal, openNewGroupModal, closeModals, validateGroupForm, createGroup,
   openOnlineModal, openProfileModal, onProfilePhotoSelected,
   openDeleteAccountModal, validateDeleteForm, confirmDeleteAccount,
+  openAdminModal, toggleSuspendUser, adminDeleteUser,
   startCall, acceptCall, declineCall, toggleMute, endCall
 };
